@@ -2,12 +2,12 @@ from requests import get
 from datetime import datetime, timezone, timedelta
 import re
 
-def pedir_cordenadas(cuerpo_celeste):
+def pedir_cordenadas(cuerpo_celeste): #cuerpo_celeste acepta el id del cuerpo celeste, revisar indice en jpl horizons.
     ahora_utc = datetime.now(timezone.utc) #Hora actual en utc.
 
     inicio_jpl = ahora_utc.strftime('%Y-%m-%d %H:%M') #Formato para jpl.
-    fin_jpl = (ahora_utc + timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M') #añade 15 minutos.
-
+    fin_jpl = (ahora_utc + timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M') #añade 1 minuto.
+    #formato general para crear el formato de la petición a jpl horizons, se reformara para otros tipos de requests.
     parametros = ("format=json&" +
               f"COMMAND=\'{str(cuerpo_celeste)}\'&" +
               "OBJ_DATA=\'NO\'&"
