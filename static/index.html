@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistema Solar 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
+        canvas { display: block; }
+
+        #tooltip {
+            position: absolute;
+            display: none;
+            pointer-events: none;
+            background: rgba(10, 14, 22, 0.85);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            border: 1px solid rgba(255,255,255,0.15);
+            transform: translate(-50%, -140%);
+            z-index: 5;
+        }
+
+        #ayuda {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            color: #cfd8e3;
+            background: rgba(10,14,22,0.7);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 260px;
+            z-index: 5;
+        }
+
+        /* Pantalla de carga: visible mientras se consulta JPL Horizons.
+           Si algo se traba acá, el problema está en el fetch a /api/sistema-solar
+           o en el servidor, no en el renderizado 3D. */
+        #cargando {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 10px;
+            color: #cfd8e3;
+            background: #000;
+            z-index: 10;
+            font-size: 15px;
+        }
+        #cargando .spinner {
+            width: 34px;
+            height: 34px;
+            border: 3px solid rgba(255,255,255,0.15);
+            border-top-color: #9fe3f0;
+            border-radius: 50%;
+            animation: girar 0.9s linear infinite;
+        }
+        @keyframes girar { to { transform: rotate(360deg); } }
+
+        /* Banner de error/advertencia: aparece si la API no devolvió cuerpos,
+           o si devolvió cuerpos pero con errores parciales en algunos. */
+        #banner-error {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            right: 12px;
+            max-width: 640px;
+            display: none;
+            color: #ffd9d9;
+            background: rgba(120, 20, 20, 0.85);
+            border: 1px solid rgba(255,120,120,0.4);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+            z-index: 5;
+            white-space: pre-line;
+        }
+    </style>
+    <!-- Librerías de Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="cargando">
+        <div class="spinner"></div>
+        <div>Consultando posiciones reales en JPL Horizons…</div>
+    </div>
+
+    <div id="ayuda">Click sobre un cuerpo para ver su nombre. El punto blanco central es el baricentro del sistema solar.</div>
+    <div id="tooltip"></div>
+    <div id="banner-error"></div>
+
+    <!-- Lógica principal en JS -->
+    <script src="app.js"></script>
+</body>
+</html>
