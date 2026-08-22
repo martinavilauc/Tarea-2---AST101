@@ -1,5 +1,6 @@
 # Tarea-2---AST101
 Tarea 2 de AST-101
+[Click aquí para los detalles del proyecto.](Informacion%20e%20investigacion/El%20proyecto%20(la%20idea).md)
 # Integrantes:
 | Nombre | Correo | Github |  
 |--------|---------|--------|
