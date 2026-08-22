@@ -2,7 +2,7 @@ from requests import get
 from datetime import datetime, timezone, timedelta
 import re
 
-def pedir_cordenadas(cuerpo_celeste): #cuerpo_celeste acepta el id del cuerpo celeste, revisar indice en jpl horizons.
+def pedir_cordenadas(cuerpo_celeste: str): #cuerpo_celeste acepta el id del cuerpo celeste, revisar indice en jpl horizons.
     ahora_utc = datetime.now(timezone.utc) #Hora actual en utc.
 
     inicio_jpl = ahora_utc.strftime('%Y-%m-%d %H:%M') #Formato para jpl.
@@ -36,5 +36,43 @@ def pedir_cordenadas(cuerpo_celeste): #cuerpo_celeste acepta el id del cuerpo ce
             'z': float(match_z.group(1))
         }
     return None
-    
-print(pedir_cordenadas(499))
+
+def pedir_elementos_orbitales(cuerpo_celeste: str): #cuerpo_celeste acepta el id del cuerpo celeste, revisar indice en jpl horizons.
+    ahora_utc = datetime.now(timezone.utc) #Hora actual en utc.
+
+    inicio_jpl = ahora_utc.strftime('%Y-%m-%d %H:%M') #Formato para jpl.
+    fin_jpl = (ahora_utc + timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M') #añade 1 minuto.
+    #formato general para crear el formato de la petición a jpl horizons, se reformara para otros tipos de requests.
+    parametros = ("format=json&" +
+              f"COMMAND=\'{str(cuerpo_celeste)}\'&" +
+              "OBJ_DATA=\'NO\'&"
+              f"MAKE_EPHEM=\'YES\'&" +
+              "EPHEM_TYPE=\'ELEMENTS\'&" +
+              "CENTER=\'500@0\'&" +
+              f"START_TIME=\'{inicio_jpl}\'&" +
+              f"STOP_TIME=\'{fin_jpl}\'&" +
+              f"STEP_SIZE=\'15m\'"
+    )
+
+    url = "https://ssd.jpl.nasa.gov/api/horizons.api?" + parametros
+
+    respuesta = get(url)
+    texto = respuesta.json().get('result', '')
+
+    # Extraer los elementos keplerianos principales con regex
+    ec = float(re.search(r'EC\s*=\s*([^\s]+)', texto).group(1)) # Excentricidad
+    qr = float(re.search(r'QR\s*=\s*([^\s]+)', texto).group(1)) # Perihelio
+    inc = float(re.search(r'IN\s*=\s*([^\s]+)', texto).group(1)) # Inclinación
+    om = float(re.search(r'OM\s*=\s*([^\s]+)', texto).group(1)) # Nodo ascendente
+    w = float(re.search(r'W\s*=\s*([^\s]+)', texto).group(1))  # Arg. del perihelio
+
+    return {
+        'excentricidad': ec,
+        'perihelio_km': qr,
+        'inclinacion_deg': inc,
+        'nodo_ascendente_deg': om,
+        'arg_perihelio_deg': w,
+        'semieje_mayor_km': qr / (1.0 - ec) # Cálculo del semieje mayor (a)
+    }
+    return None
+
