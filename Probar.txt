@@ -1,0 +1,11 @@
+para probar el código:
+
+Instala los modulos en requirements.txt (asegúrate de instalarlos para la version de tu python).
+
+abre la terminal en carpeta raíz del proyecto y ejecuta este comando:
+
+uvicorn main:app --reload
+
+en tu navegador entra a:
+
+http://127.0.0.1:8000
