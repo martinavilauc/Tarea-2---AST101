@@ -6,7 +6,7 @@ import re
 HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
 
 
-def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None):
+def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None, centro: str = "500@0"):
     """cuerpo_celeste acepta el id del cuerpo celeste, revisar índice en JPL Horizons.
     CENTER='500@0' = baricentro del sistema solar (Solar System Barycenter),
     por eso incluso el Sol (id '10') tiene una posición != (0,0,0): se bambolea
@@ -16,6 +16,13 @@ def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None):
     fecha: instante UTC (datetime con tzinfo) para el que se piden las
     coordenadas. Si es None (comportamiento por defecto, igual que antes),
     se usa el instante actual.
+
+    centro: código de centro de JPL Horizons (sin las comillas simples que
+    Horizons espera; esta función las agrega). Por defecto el baricentro del
+    sistema solar ('500@0'), igual que antes. Para lunas se usa
+    '500@<id_del_planeta>' (p. ej. '500@399' para geocéntrico), así sus
+    coordenadas quedan relativas a su planeta y no al baricentro — de otro
+    modo la órbita de una luna no se distinguiría de la de su planeta.
     """
     momento = fecha or datetime.now(timezone.utc)
     inicio_jpl = momento.strftime('%Y-%m-%d %H:%M')
@@ -30,7 +37,7 @@ def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None):
         "OBJ_DATA": "'NO'",
         "MAKE_EPHEM": "'YES'",
         "EPHEM_TYPE": "'VECTORS'",
-        "CENTER": "'500@0'",
+        "CENTER": f"'{centro}'",
         "START_TIME": f"'{inicio_jpl}'",
         "STOP_TIME": f"'{fin_jpl}'",
         "STEP_SIZE": "'15m'",
@@ -53,14 +60,17 @@ def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None):
     return None
 
 
-def pedir_elementos_orbitales(cuerpo_celeste: str, fecha: Optional[datetime] = None):
+def pedir_elementos_orbitales(cuerpo_celeste: str, fecha: Optional[datetime] = None, centro: str = "500@0"):
     """cuerpo_celeste acepta el id del cuerpo celeste, revisar índice en JPL Horizons.
-    Nota: los elementos orbitales relativos al baricentro no tienen mucho
-    sentido para el Sol mismo, así que esta función solo se llama para
-    los planetas (ver main.py).
+    Nota: los elementos orbitales relativos al centro consultado no tienen
+    mucho sentido para el propio origen de ese centro (p. ej. el Sol
+    respecto al baricentro), así que esta función no se llama para esos
+    casos (ver main.py).
 
     fecha: mismo parámetro que en pedir_cordenadas — instante UTC para el que
     se piden los elementos. Si es None, se usa el instante actual.
+
+    centro: mismo parámetro que en pedir_cordenadas (ver esa función).
     """
     momento = fecha or datetime.now(timezone.utc)
     inicio_jpl = momento.strftime('%Y-%m-%d %H:%M')
@@ -72,7 +82,7 @@ def pedir_elementos_orbitales(cuerpo_celeste: str, fecha: Optional[datetime] = N
         "OBJ_DATA": "'NO'",
         "MAKE_EPHEM": "'YES'",
         "EPHEM_TYPE": "'ELEMENTS'",
-        "CENTER": "'500@0'",
+        "CENTER": f"'{centro}'",
         "START_TIME": f"'{inicio_jpl}'",
         "STOP_TIME": f"'{fin_jpl}'",
         "STEP_SIZE": "'15m'",

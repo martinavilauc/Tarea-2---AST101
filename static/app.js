@@ -88,6 +88,51 @@ function factorEscalaOrbita(semiejeMayorKm) {
 }
 
 // ============================================================
+// 2a-bis. Escala de distancias para LUNAS (relativa a su planeta padre)
+// ============================================================
+// Las distancias luna-planeta son órdenes de magnitud más chicas que las
+// distancias planeta-Sol (p. ej. la Luna está a ~384.000 km de la Tierra,
+// contra ~150.000.000 km Tierra-Sol). Si se reutilizara escalarDistancia()
+// tal cual, las lunas quedarían pegadas a su planeta sin importar el modo
+// de escala general — por eso usan su propia escala, siempre activa sin
+// importar si la escala de distancias planetarias está en "real" o
+// "exagerada". También usa raíz cuadrada (mismo motivo que la escala
+// planetaria "exagerada"): la relación entre la luna más cercana a su
+// planeta (Fobos, ~9.400 km de Marte) y la más lejana de esta selección
+// (Calisto, ~1.880.000 km de Júpiter) es de ~200:1 en línea recta, así que
+// sin comprimir sería imposible que ambas se vean bien en sus respectivas
+// escenas con una sola constante.
+const UNIDADES_POR_RAIZ_LUNA = 0.6;
+const KM_REFERENCIA_LUNA = 1000; // unidad de referencia arbitraria para la raíz
+
+function escalarDistanciaLuna(distanciaKm) {
+    return UNIDADES_POR_RAIZ_LUNA * Math.sqrt(distanciaKm / KM_REFERENCIA_LUNA);
+}
+
+function factorEscalaOrbitaLuna(semiejeMayorKm) {
+    return escalarDistanciaLuna(semiejeMayorKm) / semiejeMayorKm;
+}
+
+// Calcula el factor de escala de POSICIÓN correcto para un cuerpo según sea
+// luna (usa la escala de lunas, relativa a su padre) o no (usa la escala
+// planetaria normal, relativa al baricentro). Centraliza la lógica que antes
+// vivía inline dentro de construirCuerpos, para no duplicarla.
+function obtenerFactorEscalaPosicion(datos) {
+    const esLuna = !!datos.cuerpo_padre;
+    const elementos = datos.elementos_orbitales;
+    const distanciaRealKm = Math.sqrt(
+        datos.coordenadas.x ** 2 + datos.coordenadas.y ** 2 + datos.coordenadas.z ** 2
+    );
+
+    if (esLuna) {
+        if (elementos) return factorEscalaOrbitaLuna(elementos.semieje_mayor_km);
+        return distanciaRealKm > 0 ? escalarDistanciaLuna(distanciaRealKm) / distanciaRealKm : 0;
+    }
+    if (elementos) return factorEscalaOrbita(elementos.semieje_mayor_km);
+    return distanciaRealKm > 0 ? escalarDistancia(distanciaRealKm) / distanciaRealKm : 0;
+}
+
+// ============================================================
 // 2b. Escala de tamaño: eje independiente de la escala de distancias
 // ============================================================
 // "real": el radio visual es proporcional al radio real del cuerpo, usando
@@ -181,10 +226,16 @@ function perifocalAEclipica(xPf, yPf, incDeg, nodoDeg, argPeriDeg) {
 
 // Construye el aro de órbita a partir de los elementos reales (excentricidad,
 // semieje mayor, inclinación, nodo ascendente y argumento del perihelio).
-function crearLineaOrbita(elementos, color) {
+// "factor" ya viene calculado por el llamador (obtenerFactorEscalaPosicion):
+// así esta función sirve igual para un planeta (factor relativo al
+// baricentro) que para una luna (factor relativo a su planeta padre) sin
+// necesitar dos versiones. El resultado queda centrado en el origen local
+// (0,0,0) — el llamador debe trasladarlo a la posición del cuerpo padre
+// (ver construirCuerpos) para lunas; para planetas el padre es el
+// baricentro, así que no hace falta trasladar nada.
+function crearLineaOrbita(elementos, color, factor) {
     const aKm = elementos.semieje_mayor_km;
     const e = elementos.excentricidad;
-    const factor = factorEscalaOrbita(aKm);
 
     const segmentos = 180;
     const puntos = [];
@@ -279,6 +330,11 @@ function mostrarError(mensaje) {
 // reconstruir la escena al cambiar de escala sin volver a pedirlos.
 let ultimosCuerpos = null;
 
+// El índice (menú izquierdo) se arma una sola vez, la primera vez que llegan
+// datos: el catálogo de cuerpos (categoría, cuerpo padre) es fijo — lo que
+// cambia con la fecha son las coordenadas, no qué cuerpos existen.
+let indiceConstruido = false;
+
 // Quita de la escena los meshes/marcadores/líneas de cuerpos dibujados
 // anteriormente (deja intactos el marcador del baricentro, las estrellas y
 // las luces).
@@ -303,17 +359,67 @@ function limpiarCuerpos() {
     wireframeActivo = null;
 }
 
+// Posición absoluta (en unidades de escena) de cada cuerpo ya construido en
+// esta pasada, indexada por nombre. Se usa para ubicar lunas relativas a su
+// planeta padre, y se recalcula en cada llamada a construirCuerpos — incluye
+// SIEMPRE la posición de todo cuerpo con datos válidos, esté visible o no,
+// para que una luna visible con su planeta oculto (categoría "Planetas"
+// desactivada) igual se ubique donde correspondería su padre.
+const posicionesPorNombre = new Map();
+
 // Dibuja el Sol y los planetas a partir de los datos ya recibidos de la API,
-// usando el modoEscala/modoTamano actuales. Se puede llamar varias veces
-// (p. ej. al cambiar de escala) sin volver a consultar el backend.
+// usando el modoEscala/modoTamano actuales y el estado de visibilidad del
+// índice (ver sección 10). Se puede llamar varias veces (p. ej. al cambiar
+// de escala) sin volver a consultar el backend.
 function construirCuerpos(cuerpos) {
     let distanciaVisualMaxima = 0;
+    posicionesPorNombre.clear();
 
     Object.keys(cuerpos).forEach(nombre => {
         const data = cuerpos[nombre];
         const coords = data.coordenadas;
         const elementos = data.elementos_orbitales; // null para el Sol (o si Horizons no los pudo leer)
         const esSol = nombre === "Sol";
+        const esLuna = !!data.cuerpo_padre;
+
+        // Posición del cuerpo padre (para lunas) o el origen (para todo lo
+        // demás, que orbita el baricentro). Si es una luna cuyo padre no
+        // tiene posición conocida (falló en la API, o es un padre que no
+        // existe en el catálogo), no se puede ubicar: se omite por completo.
+        let posicionPadre = new THREE.Vector3(0, 0, 0);
+        if (esLuna) {
+            if (!posicionesPorNombre.has(data.cuerpo_padre)) {
+                console.warn(`"${nombre}" no se pudo ubicar: su cuerpo padre "${data.cuerpo_padre}" no está disponible.`);
+                return;
+            }
+            posicionPadre = posicionesPorNombre.get(data.cuerpo_padre);
+        }
+
+        const factor = obtenerFactorEscalaPosicion(data);
+        const posicionLocal = new THREE.Vector3(coords.x * factor, coords.z * factor, coords.y * factor);
+        const posicion = posicionPadre.clone().add(posicionLocal);
+        posicionesPorNombre.set(nombre, posicion);
+
+        // La distancia usada para encuadrar la cámara por defecto SOLO
+        // considera al Sol y los planetas: las lunas ya quedan encuadradas
+        // junto con su planeta (su aporte es minúsculo en comparación), y
+        // los satélites/sondas heliocéntricos (p. ej. las Voyager, a cientos
+        // de UA) arruinarían el encuadre por defecto si se incluyeran acá.
+        // Sí se puede llegar a ellos clickeándolos desde el índice, que
+        // centra la cámara individualmente (ver centrarCamaraEnCuerpo).
+        if (data.categoria === 'sol' || data.categoria === 'planeta') {
+            const distanciaVisualCuerpo = elementos
+                ? escalarDistancia(elementos.semieje_mayor_km)
+                : escalarDistancia(Math.sqrt(coords.x ** 2 + coords.y ** 2 + coords.z ** 2));
+            distanciaVisualMaxima = Math.max(distanciaVisualMaxima, distanciaVisualCuerpo);
+        }
+
+        // Si el usuario ocultó este cuerpo (individualmente o toda su
+        // categoría) desde el índice, no se dibuja nada — pero su posición
+        // ya quedó guardada arriba, para que sus propias lunas (si las
+        // tuviera) igual se ubiquen correctamente.
+        if (!esCuerpoVisible(nombre)) return;
+
         const radioVisual = calcularRadioVisual(data);
 
         // Mesh visual: lo que realmente se ve. En escala de tamaño real
@@ -325,23 +431,6 @@ function construirCuerpos(cuerpos) {
             ? new THREE.MeshBasicMaterial({ color: data.color })
             : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.9, metalness: 0 });
         const mesh = new THREE.Mesh(geo, mat);
-
-        // Factor de escala de POSICIÓN (no de tamaño): si hay elementos
-        // orbitales, se usa el semieje mayor de ESE planeta (así la
-        // posición queda coherente con su propio aro de órbita). Si no hay
-        // (Sol, o falló la consulta de elementos), se usa la distancia
-        // instantánea del propio cuerpo.
-        const distanciaRealKm = Math.sqrt(coords.x ** 2 + coords.y ** 2 + coords.z ** 2);
-        let factor = 0;
-        if (elementos) {
-            factor = factorEscalaOrbita(elementos.semieje_mayor_km);
-        } else if (distanciaRealKm > 0) {
-            factor = escalarDistancia(distanciaRealKm) / distanciaRealKm;
-        }
-
-        // Mismo mapeo de ejes que usa el aro de órbita: X real -> x escena,
-        // Z real -> y escena (altura), Y real -> z escena.
-        const posicion = new THREE.Vector3(coords.x * factor, coords.z * factor, coords.y * factor);
         mesh.position.copy(posicion);
         scene.add(mesh);
         objetosCuerpos.push(mesh);
@@ -396,15 +485,13 @@ function construirCuerpos(cuerpos) {
 
         cuerposInteractivos.push({ meshRaycast: hitbox, wireframe, nombre, datos: data });
 
-        // Distancia visual máxima entre el semieje mayor (planetas) y la
-        // posición instantánea (Sol), para poder encuadrar la cámara.
-        const distanciaVisualCuerpo = elementos
-            ? escalarDistancia(elementos.semieje_mayor_km)
-            : escalarDistancia(distanciaRealKm);
-        distanciaVisualMaxima = Math.max(distanciaVisualMaxima, distanciaVisualCuerpo);
-
         if (elementos) {
-            const lineaOrbita = crearLineaOrbita(elementos, data.color);
+            const lineaOrbita = crearLineaOrbita(elementos, data.color, factor);
+            // El aro se genera centrado en el origen local; se traslada al
+            // padre acá (baricentro para planetas/Sol/satélites — sin
+            // efecto, ya que posicionPadre es (0,0,0) — o el planeta padre
+            // para lunas).
+            lineaOrbita.position.copy(posicionPadre);
             scene.add(lineaOrbita);
             objetosCuerpos.push(lineaOrbita);
         }
@@ -485,6 +572,10 @@ async function cargarSistemaSolar(fecha) {
     }
 
     ultimosCuerpos = cuerpos;
+    if (!indiceConstruido && nombres.length > 0) {
+        construirIndice(cuerpos);
+        indiceConstruido = true;
+    }
     // Sin esto, los cuerpos de la consulta anterior (otra fecha) quedaban
     // en la escena junto a los nuevos, en vez de reemplazarlos.
     limpiarCuerpos();
@@ -527,19 +618,24 @@ function formatearGrados(valorDeg) {
 }
 
 // Nombre de archivo (sin extensión) esperado en static/resources/ para cada
-// cuerpo: minúsculas, sin tildes. "sol.svg", "jupiter.svg", etc. Reemplaza
-// esos archivos por fotos reales (p. ej. de JPL/NASA, de dominio público)
-// para tener imágenes reales en vez de las ilustraciones generadas.
+// cuerpo: minúsculas, sin tildes, sin paréntesis, espacios reemplazados por
+// guiones. "sol.jpg", "jupiter.jpg", "voyager-1.jpg", "james-webb-jwst.jpg".
+// Reemplaza esos archivos por fotos reales (p. ej. de JPL/NASA, de dominio
+// público) para tener imágenes reales en vez de las ilustraciones generadas.
 function slugCuerpo(nombre) {
     if (nombre.startsWith('Baricentro')) return 'baricentro';
-    return nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return nombre
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[()]/g, '')
+        .replace(/\s+/g, '-');
 }
 
 // Si el archivo no existe (p. ej. todavía no se reemplazó), oculta la
 // imagen en vez de mostrar el ícono roto del navegador.
 function crearImagenCuerpo(nombre) {
     const slug = slugCuerpo(nombre);
-    return `<img class="imagen-cuerpo" src="resources/${slug}.svg" alt="${nombre}" onerror="this.style.display='none'">`;
+    return `<img class="imagen-cuerpo" src="resources/${slug}.jpg" alt="${nombre}" onerror="this.style.display='none'">`;
 }
 
 // Arma el HTML del panel para un cuerpo (Sol/planeta) o para el baricentro.
@@ -572,12 +668,12 @@ function construirContenidoInfo(nombre, datos) {
                 : 'Mostrando el tamaño exagerado (elegido a mano en main.py), no el real.'}
         </p>
 
-        <h3>Coordenadas</h3>
+        <h3>Coordenadas (relativas a ${datos.cuerpo_padre || 'el baricentro'})</h3>
         <table>
             <tr><td>X</td><td>${formatearKm(datos.coordenadas.x)}</td></tr>
             <tr><td>Y</td><td>${formatearKm(datos.coordenadas.y)}</td></tr>
             <tr><td>Z</td><td>${formatearKm(datos.coordenadas.z)}</td></tr>
-            <tr><td>Distancia al baricentro</td><td>${formatearKm(distanciaRealKm)}</td></tr>
+            <tr><td>Distancia a ${datos.cuerpo_padre || 'el baricentro'}</td><td>${formatearKm(distanciaRealKm)}</td></tr>
         </table>
     `;
 
@@ -633,11 +729,20 @@ function construirContenidoInfo(nombre, datos) {
 
 function mostrarInfoCuerpo(nombre, datos) {
     elInfoNombre.textContent = nombre;
-    elInfoSubtitulo.textContent = datos
-        ? (nombre === "Sol" ? "Estrella del sistema" : "Planeta")
-        : "Punto de referencia";
+    elInfoSubtitulo.textContent = subtituloCuerpo(datos);
     elInfoContenido.innerHTML = construirContenidoInfo(nombre, datos);
     abrirPanel(elPanelInfo);
+}
+
+function subtituloCuerpo(datos) {
+    if (!datos) return "Punto de referencia";
+    switch (datos.categoria) {
+        case 'sol': return "Estrella del sistema";
+        case 'planeta': return "Planeta";
+        case 'luna': return `Luna de ${datos.cuerpo_padre}`;
+        case 'satelite': return "Satélite artificial / sonda";
+        default: return "Cuerpo celeste";
+    }
 }
 
 // ============================================================
@@ -699,7 +804,179 @@ botonFechaActual.addEventListener('click', () => {
 });
 
 // ============================================================
-// 8. Interacción sobre los cuerpos: hover (wireframe) y click (panel)
+// 8. Índice de cuerpos (menú izquierdo): mostrar/ocultar por cuerpo o por
+//    categoría completa, y seleccionar un cuerpo igual que clickeándolo
+// ============================================================
+// Visibilidad por nombre de cuerpo. Sin entrada = visible (default). Se
+// preserva entre cambios de escala/fecha (no se resetea en construirCuerpos
+// ni en cargarSistemaSolar), para que ocultar algo se mantenga al navegar.
+const visibilidadCuerpos = {};
+
+function esCuerpoVisible(nombre) {
+    return visibilidadCuerpos[nombre] !== false;
+}
+
+// nombre -> <input type="checkbox"> de ese cuerpo en el índice, y
+// categoría-de-índice -> lista de nombres que agrupa esa casilla maestra
+// (el Sol se agrupa bajo la casilla maestra "planeta"). Se completan al
+// construir el índice y se usan para mantener sincronizadas las casillas
+// maestras con el estado real de sus miembros.
+const casillasIndicePorNombre = {};
+const nombresPorCategoriaIndice = {};
+
+function grupoIndiceDeCategoria(categoria) {
+    return categoria === 'sol' ? 'planeta' : categoria;
+}
+
+// Sincroniza la casilla maestra de una categoría con el estado de sus
+// miembros: marcada si todos están visibles, vacía si ninguno, e
+// "indeterminate" (barra en vez de tilde) si es una mezcla.
+function actualizarCasillaCategoria(categoriaBody) {
+    const grupo = grupoIndiceDeCategoria(categoriaBody);
+    const nombres = nombresPorCategoriaIndice[grupo];
+    const casillaCat = document.querySelector(`#indice-contenido input[data-categoria="${grupo}"]`);
+    if (!nombres || !casillaCat) return;
+
+    const visibles = nombres.filter(esCuerpoVisible).length;
+    casillaCat.checked = visibles === nombres.length;
+    casillaCat.indeterminate = visibles > 0 && visibles < nombres.length;
+}
+
+function crearItemIndice(nombre, datos) {
+    const li = document.createElement('li');
+
+    const casilla = document.createElement('input');
+    casilla.type = 'checkbox';
+    casilla.checked = esCuerpoVisible(nombre);
+    casilla.addEventListener('change', () => {
+        visibilidadCuerpos[nombre] = casilla.checked;
+        actualizarCasillaCategoria(datos.categoria);
+        reconstruirConEscalaActual();
+    });
+    casillasIndicePorNombre[nombre] = casilla;
+
+    const muestra = document.createElement('span');
+    muestra.className = 'muestra-color';
+    muestra.style.backgroundColor = datos.color;
+
+    const boton = document.createElement('button');
+    boton.type = 'button';
+    boton.className = 'indice-cuerpo-nombre';
+    boton.textContent = nombre;
+    boton.addEventListener('click', () => seleccionarDesdeIndice(nombre));
+
+    li.appendChild(casilla);
+    li.appendChild(muestra);
+    li.appendChild(boton);
+    return li;
+}
+
+// Arma el índice completo (una sola vez, la primera vez que llegan datos):
+// Planetas (incluido el Sol) / Lunas (agrupadas por su planeta padre) /
+// Satélites artificiales. Cada categoría con su propia casilla maestra.
+function construirIndice(cuerpos) {
+    const contenedor = document.getElementById('indice-contenido');
+    contenedor.innerHTML = '';
+
+    const grupos = [
+        { clave: 'planeta', titulo: 'Planetas', incluirSol: true, agruparPorPadre: false },
+        { clave: 'luna', titulo: 'Lunas', incluirSol: false, agruparPorPadre: true },
+        { clave: 'satelite', titulo: 'Satélites artificiales', incluirSol: false, agruparPorPadre: false },
+    ];
+
+    grupos.forEach(grupo => {
+        const nombresGrupo = Object.keys(cuerpos).filter(n => {
+            const c = cuerpos[n].categoria;
+            return c === grupo.clave || (grupo.incluirSol && c === 'sol');
+        });
+        if (nombresGrupo.length === 0) return;
+
+        nombresPorCategoriaIndice[grupo.clave] = nombresGrupo;
+
+        const bloque = document.createElement('div');
+        bloque.className = 'indice-categoria';
+
+        const headerLabel = document.createElement('label');
+        headerLabel.className = 'indice-categoria-header';
+        const casillaCat = document.createElement('input');
+        casillaCat.type = 'checkbox';
+        casillaCat.checked = true;
+        casillaCat.dataset.categoria = grupo.clave;
+        const tituloEl = document.createElement('strong');
+        tituloEl.textContent = grupo.titulo;
+        headerLabel.appendChild(casillaCat);
+        headerLabel.appendChild(tituloEl);
+        bloque.appendChild(headerLabel);
+
+        casillaCat.addEventListener('change', () => {
+            nombresGrupo.forEach(n => {
+                visibilidadCuerpos[n] = casillaCat.checked;
+                if (casillasIndicePorNombre[n]) casillasIndicePorNombre[n].checked = casillaCat.checked;
+            });
+            reconstruirConEscalaActual();
+        });
+
+        const lista = document.createElement('ul');
+        lista.className = 'indice-lista';
+
+        if (grupo.agruparPorPadre) {
+            const padresVistos = [];
+            const porPadre = {};
+            nombresGrupo.forEach(n => {
+                const padre = cuerpos[n].cuerpo_padre || 'Sin padre conocido';
+                if (!porPadre[padre]) { porPadre[padre] = []; padresVistos.push(padre); }
+                porPadre[padre].push(n);
+            });
+            padresVistos.forEach(padre => {
+                const subtitulo = document.createElement('li');
+                subtitulo.className = 'indice-subgrupo-titulo';
+                subtitulo.textContent = padre;
+                lista.appendChild(subtitulo);
+                porPadre[padre].forEach(n => lista.appendChild(crearItemIndice(n, cuerpos[n])));
+            });
+        } else {
+            nombresGrupo.forEach(n => lista.appendChild(crearItemIndice(n, cuerpos[n])));
+        }
+
+        bloque.appendChild(lista);
+        contenedor.appendChild(bloque);
+    });
+}
+
+// Seleccionar un cuerpo desde el índice hace lo mismo que clickearlo en la
+// escena 3D. Si estaba oculto, primero se muestra (auto-activa su casilla y
+// la de su categoría) para que tenga sentido enfocar la cámara en él.
+function seleccionarDesdeIndice(nombre) {
+    if (!ultimosCuerpos || !ultimosCuerpos[nombre]) return;
+
+    if (!esCuerpoVisible(nombre)) {
+        visibilidadCuerpos[nombre] = true;
+        if (casillasIndicePorNombre[nombre]) casillasIndicePorNombre[nombre].checked = true;
+        actualizarCasillaCategoria(ultimosCuerpos[nombre].categoria);
+        reconstruirConEscalaActual();
+    }
+
+    const cuerpo = cuerposInteractivos.find(c => c.nombre === nombre);
+    if (cuerpo) {
+        mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
+        centrarCamaraEnCuerpo(cuerpo);
+    }
+}
+
+// El índice es un panel independiente (a la izquierda) de config/info (a la
+// derecha): no participa del "un panel abierto a la vez" de abrirPanel().
+const botonIndice = document.getElementById('indice-boton');
+const elPanelIndice = document.getElementById('indice-panel');
+
+botonIndice.addEventListener('click', () => {
+    elPanelIndice.style.display = (elPanelIndice.style.display === 'flex') ? 'none' : 'flex';
+});
+document.getElementById('cerrar-indice').addEventListener('click', () => {
+    elPanelIndice.style.display = 'none';
+});
+
+// ============================================================
+// 10. Interacción sobre los cuerpos: hover (wireframe) y click (panel)
 // ============================================================
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -738,15 +1015,29 @@ function onPointerMoveEscena(event) {
 }
 renderer.domElement.addEventListener('pointermove', onPointerMoveEscena);
 
-// Centra la cámara en el cuerpo clickeado: mueve el punto de órbita de
-// OrbitControls a la posición del cuerpo y acerca la cámara manteniendo el
-// ángulo de vista actual. La distancia de acercamiento se calcula a partir
-// del radio del hitbox (constante, no cambia con el modo de tamaño), así
-// que el "zoom" queda igual de cómodo sin importar si el tamaño mostrado es
-// real o exagerado.
+// Distancia de acercamiento para centrarCamaraEnCuerpo: normalmente 9 veces
+// el radio del hitbox, pero si el cuerpo clickeado tiene lunas propias (p.
+// ej. Júpiter), se amplía para que también entren en el encuadre — si no,
+// quedarían fuera de cámara pese a estar visibles en la escena.
+function distanciaEnfoque(cuerpo) {
+    const radioBase = cuerpo.meshRaycast.geometry.parameters.radius;
+    let distanciaMaxLuna = 0;
+
+    if (ultimosCuerpos) {
+        Object.keys(ultimosCuerpos).forEach(otroNombre => {
+            const otroDatos = ultimosCuerpos[otroNombre];
+            if (otroDatos.cuerpo_padre === cuerpo.nombre && posicionesPorNombre.has(otroNombre)) {
+                const distancia = posicionesPorNombre.get(otroNombre).distanceTo(cuerpo.meshRaycast.position);
+                distanciaMaxLuna = Math.max(distanciaMaxLuna, distancia);
+            }
+        });
+    }
+
+    return Math.max(radioBase * 9, distanciaMaxLuna * 1.4, 1.2);
+}
+
 function centrarCamaraEnCuerpo(cuerpo) {
     const posicion = cuerpo.meshRaycast.position;
-    const radioReferencia = cuerpo.meshRaycast.geometry.parameters.radius;
 
     const direccion = camera.position.clone().sub(controls.target);
     if (direccion.lengthSq() === 0) {
@@ -754,7 +1045,7 @@ function centrarCamaraEnCuerpo(cuerpo) {
     }
     direccion.normalize();
 
-    const distanciaCamara = Math.max(radioReferencia * 9, 1.2);
+    const distanciaCamara = distanciaEnfoque(cuerpo);
     controls.target.copy(posicion);
     camera.position.copy(posicion).addScaledVector(direccion, distanciaCamara);
     controls.update();
@@ -771,7 +1062,7 @@ function onClickEscena(event) {
 renderer.domElement.addEventListener('click', onClickEscena);
 
 // ============================================================
-// 9. Inicializar llamada y bucle de render
+// 11. Inicializar llamada y bucle de render
 // ============================================================
 cargarSistemaSolar(null);
 
