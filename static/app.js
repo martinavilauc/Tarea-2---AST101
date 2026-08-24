@@ -74,8 +74,14 @@ function escalarDistancia(distanciaKm) {
     if (modoEscala === 'real') {
         return distanciaKm / KM_POR_UNIDAD_REAL;
     }
-    const distanciaUA = distanciaKm / KM_POR_UA;
-    return UNIDADES_POR_RAIZ_UA * Math.sqrt(distanciaUA);
+    // Math.sign(...) preserva el signo de la entrada: el semieje mayor de
+    // una órbita hiperbólica (sondas que escapan del sistema solar, ver
+    // crearLineaOrbita) es NEGATIVO por convención. Sin esto, Math.sqrt()
+    // de un valor negativo da NaN y rompería la posición/órbita de esas
+    // sondas en este modo de escala.
+    const signo = Math.sign(distanciaKm) || 1;
+    const distanciaUA = Math.abs(distanciaKm) / KM_POR_UA;
+    return signo * UNIDADES_POR_RAIZ_UA * Math.sqrt(distanciaUA);
 }
 
 // Factor lineal único que, aplicado a TODO lo que pertenece a un mismo
@@ -88,36 +94,71 @@ function factorEscalaOrbita(semiejeMayorKm) {
 }
 
 // ============================================================
-// 2a-bis. Escala de distancias para LUNAS (relativa a su planeta padre)
+// 2a-bis. Escala de LUNAS (órbita y tamaño juntos: real | exagerada)
 // ============================================================
-// Las distancias luna-planeta son órdenes de magnitud más chicas que las
-// distancias planeta-Sol (p. ej. la Luna está a ~384.000 km de la Tierra,
-// contra ~150.000.000 km Tierra-Sol). Si se reutilizara escalarDistancia()
-// tal cual, las lunas quedarían pegadas a su planeta sin importar el modo
-// de escala general — por eso usan su propia escala, siempre activa sin
-// importar si la escala de distancias planetarias está en "real" o
-// "exagerada". También usa raíz cuadrada (mismo motivo que la escala
-// planetaria "exagerada"): la relación entre la luna más cercana a su
-// planeta (Fobos, ~9.400 km de Marte) y la más lejana de esta selección
-// (Calisto, ~1.880.000 km de Júpiter) es de ~200:1 en línea recta, así que
-// sin comprimir sería imposible que ambas se vean bien en sus respectivas
-// escenas con una sola constante.
-const UNIDADES_POR_RAIZ_LUNA = 0.6;
-const KM_REFERENCIA_LUNA = 1000; // unidad de referencia arbitraria para la raíz
+// Un solo modo controla tanto la distancia de la luna a su planeta como su
+// tamaño — elegible desde el panel de configuración.
+//
+// "real": usa la MISMA regla que la escala planetaria real — dividir por
+// KM_POR_UNIDAD_REAL — pero SIEMPRE, sin importar en qué esté modoEscala en
+// ese momento (si se reutilizara escalarDistancia() tal cual, el modo
+// "exagerada" de las lunas heredaría sin querer la compresión con raíz
+// cuadrada de los planetas). Con esta escala la Luna queda a solo ~0.096
+// unidades de la Tierra: virtualmente invisible sin acercar mucho la
+// cámara, que es fiel a lo chica que es una órbita lunar comparada con las
+// distancias entre planetas.
+//
+// "exagerada": el bug que reportaste. Antes esta escala usaba una constante
+// fija en km, totalmente ajena al planeta que orbita — cuando la escala
+// planetaria estaba en "exagerada" (planetas comprimidos y cercanos entre
+// sí), esa distancia fija terminaba pareciendo enorme al lado de un Sol-
+// Tierra ya achicado. La corrección: la distancia de la luna a su planeta
+// ahora es un múltiplo del radio_exagerado DE ESE PLANETA (un valor fijo
+// definido en main.py, que no cambia con modoTamano ni con modoEscala), así
+// que el aro siempre se ve proporcional al planeta que orbita, sin importar
+// qué combinación de escalas esté activa. Cuando un planeta tiene varias
+// lunas (p. ej. las 4 galileanas de Júpiter), cada una se ubica un poco más
+// lejos que la anterior según su orden real (más cercana a más lejana),
+// para que no queden todas amontonadas en el mismo radio.
+let modoEscalaLuna = 'real'; // 'real' | 'exagerada'
 
-function escalarDistanciaLuna(distanciaKm) {
-    return UNIDADES_POR_RAIZ_LUNA * Math.sqrt(distanciaKm / KM_REFERENCIA_LUNA);
+function escalarDistanciaLunaReal(distanciaKm) {
+    return distanciaKm / KM_POR_UNIDAD_REAL;
 }
 
-function factorEscalaOrbitaLuna(semiejeMayorKm) {
-    return escalarDistanciaLuna(semiejeMayorKm) / semiejeMayorKm;
+function distanciaVisualLunaExagerada(radioExageradoPadre, rangoEntreHermanas) {
+    return radioExageradoPadre * (2.4 + rangoEntreHermanas * 1.5);
 }
 
-// Calcula el factor de escala de POSICIÓN correcto para un cuerpo según sea
-// luna (usa la escala de lunas, relativa a su padre) o no (usa la escala
-// planetaria normal, relativa al baricentro). Centraliza la lógica que antes
-// vivía inline dentro de construirCuerpos, para no duplicarla.
-function obtenerFactorEscalaPosicion(datos) {
+// Para cada luna, su posición entre las lunas DEL MISMO planeta (0 = la más
+// cercana en distancia real), usado solo por la escala "exagerada" para
+// separarlas visualmente. `cuerpos` es el objeto completo tal como llega de
+// la API (no solo las lunas), se recalcula una vez por cada construcción.
+function calcularRangosLunas(cuerpos) {
+    const porPadre = {};
+    Object.keys(cuerpos).forEach(nombre => {
+        const datos = cuerpos[nombre];
+        if (!datos.cuerpo_padre) return;
+        const distanciaReal = datos.elementos_orbitales
+            ? datos.elementos_orbitales.semieje_mayor_km
+            : Math.sqrt(datos.coordenadas.x ** 2 + datos.coordenadas.y ** 2 + datos.coordenadas.z ** 2);
+        (porPadre[datos.cuerpo_padre] = porPadre[datos.cuerpo_padre] || []).push({ nombre, distanciaReal });
+    });
+
+    const rangos = {};
+    Object.values(porPadre).forEach(lista => {
+        lista.sort((a, b) => a.distanciaReal - b.distanciaReal);
+        lista.forEach((item, indice) => { rangos[item.nombre] = indice; });
+    });
+    return rangos;
+}
+
+// Calcula el factor de escala de POSICIÓN correcto para un cuerpo: si es una
+// luna, usa la escala de lunas (real o exagerada, relativa a su padre); si
+// no, la escala planetaria normal (relativa al baricentro). "cuerpos" y
+// "rangosLunas" solo se usan para lunas en modo exagerado (para leer el
+// radio_exagerado del padre y el orden entre hermanas).
+function obtenerFactorEscalaPosicion(nombre, datos, cuerpos, rangosLunas) {
     const esLuna = !!datos.cuerpo_padre;
     const elementos = datos.elementos_orbitales;
     const distanciaRealKm = Math.sqrt(
@@ -125,8 +166,17 @@ function obtenerFactorEscalaPosicion(datos) {
     );
 
     if (esLuna) {
-        if (elementos) return factorEscalaOrbitaLuna(elementos.semieje_mayor_km);
-        return distanciaRealKm > 0 ? escalarDistanciaLuna(distanciaRealKm) / distanciaRealKm : 0;
+        const semiejeOInstantanea = elementos ? elementos.semieje_mayor_km : distanciaRealKm;
+        if (semiejeOInstantanea <= 0) return 0;
+
+        if (modoEscalaLuna === 'real') {
+            return escalarDistanciaLunaReal(semiejeOInstantanea) / semiejeOInstantanea;
+        }
+        const padre = cuerpos[datos.cuerpo_padre];
+        const radioExageradoPadre = padre ? padre.radio_exagerado : 1;
+        const rango = rangosLunas[nombre] ?? 0;
+        const distanciaVisual = distanciaVisualLunaExagerada(radioExageradoPadre, rango);
+        return distanciaVisual / semiejeOInstantanea;
     }
     if (elementos) return factorEscalaOrbita(elementos.semieje_mayor_km);
     return distanciaRealKm > 0 ? escalarDistancia(distanciaRealKm) / distanciaRealKm : 0;
@@ -147,10 +197,15 @@ function obtenerFactorEscalaPosicion(datos) {
 //
 // "exagerada": usa el radio elegido a mano en main.py (radio_exagerado),
 // para que los cuerpos sean visibles sin necesidad de acercar la cámara.
+//
+// Las lunas usan su PROPIO modo (modoEscalaLuna, ver arriba) en vez de
+// modoTamano, para que "Escala de lunas" controle tamaño y órbita juntos
+// sin depender de qué esté eligiendo el usuario para los planetas.
 let modoTamano = 'real'; // 'real' | 'exagerada'
 
 function calcularRadioVisual(datos) {
-    if (modoTamano === 'real') {
+    const modo = datos.cuerpo_padre ? modoEscalaLuna : modoTamano;
+    if (modo === 'real') {
         return datos.radio_km / KM_POR_UNIDAD_REAL;
     }
     return datos.radio_exagerado;
@@ -165,30 +220,26 @@ const RADIO_MINIMO_CLIC = 0.35;
 // siga siendo visible aunque el radio real del cuerpo sea sub-píxel.
 const RADIO_MINIMO_WIREFRAME = 0.07;
 
-// Radio de la zona clickeable: SIEMPRE se calcula a partir del radio
-// exagerado del cuerpo (nunca del real), así que no cambia según el modo de
-// tamaño elegido — clickear un planeta es igual de fácil en "real" que en
-// "exagerada".
-function calcularRadioHitbox(datos) {
-    return Math.max(datos.radio_exagerado * 1.3, RADIO_MINIMO_CLIC);
+// Factor aplicado al radio visual actual para obtener el radio de la zona
+// interactiva (hitbox) y del wireframe. En "exagerada" el radio visual ya
+// es lo bastante grande como para que 1.3x alcance; en "real" el radio
+// visual suele ser diminuto, así que se usa un factor mayor (2x) para que
+// el aro se note proporcional al tamaño real del cuerpo en vez de colapsar
+// siempre al mismo piso mínimo (que era lo que pasaba antes: en escala real
+// casi todos los cuerpos quedaban con el mismo wireframe, sin importar su
+// tamaño real relativo, salvo el Sol — que ya usaba esta misma idea con
+// factor 1.5 como caso especial). Ahora todo cuerpo (Sol, planetas, lunas,
+// satélites, baricentro) sigue esta misma regla.
+function factorRadioInteractivo(esModoReal) {
+    return esModoReal ? 2.0 : 1.3;
 }
 
-// Radio del wireframe: sí sigue al radio visual actual (real o exagerado),
-// para que se note el cambio de tamaño al alternar el modo. Tiene su propio
-// piso, más chico que el del hitbox, para no ocultar que el cuerpo real es
-// diminuto pero sin volverse invisible.
-function calcularRadioWireframe(radioVisual) {
-    return Math.max(radioVisual * 1.3, RADIO_MINIMO_WIREFRAME);
+function calcularRadioHitbox(radioVisual, esModoReal) {
+    return Math.max(radioVisual * factorRadioInteractivo(esModoReal), RADIO_MINIMO_CLIC);
 }
 
-// Para el Sol y el baricentro (a diferencia de los demás planetas) el
-// hitbox/wireframe SÍ sigue de cerca al radio visual actual (factor 1.5,
-// con piso mínimo), en vez de quedar fijo al radio exagerado: ambos son
-// "puntos únicos" de referencia en el centro de la escena, así que conviene
-// que su zona interactiva se ciña a su tamaño real en pantalla en vez de
-// quedar con un halo desproporcionado.
-function calcularRadioAjustado(radioBase, minimo) {
-    return Math.max(radioBase * 1.5, minimo);
+function calcularRadioWireframe(radioVisual, esModoReal) {
+    return Math.max(radioVisual * factorRadioInteractivo(esModoReal), RADIO_MINIMO_WIREFRAME);
 }
 
 // ============================================================
@@ -233,14 +284,56 @@ function perifocalAEclipica(xPf, yPf, incDeg, nodoDeg, argPeriDeg) {
 // (0,0,0) — el llamador debe trasladarlo a la posición del cuerpo padre
 // (ver construirCuerpos) para lunas; para planetas el padre es el
 // baricentro, así que no hace falta trasladar nada.
-function crearLineaOrbita(elementos, color, factor) {
+function crearLineaOrbita(elementos, color, factor, distanciaActualKm) {
     const aKm = elementos.semieje_mayor_km;
     const e = elementos.excentricidad;
+
+    // Excentricidad >= 1 = órbita hiperbólica (o parabólica): no es una
+    // elipse cerrada, es una trayectoria de escape (típico de sondas que
+    // dejan el sistema solar, como las Voyager). Dos problemas distintos
+    // hay que resolver acá:
+    //
+    // 1) La ecuación polar r(ν) = a(1-e²)/(1+e·cosν) solo es válida donde
+    //    el denominador es positivo — barriendo las 360° completas como si
+    //    fuera una elipse, el denominador cruza por cero y la curva se
+    //    "rompe" visualmente. El límite real son los ±ν de la asíntota,
+    //    donde cos(ν) = -1/e.
+    //
+    // 2) El semieje mayor "a" de una hiperbólica es una propiedad
+    //    geométrica LOCAL (cerca del perihelio) — no tiene relación directa
+    //    con qué tan lejos haya viajado el objeto. Para una sonda como la
+    //    Voyager 1, |a| es menor a 1 UA aunque la sonda esté a más de 160
+    //    UA del Sol. Si el arco se dibuja con un ángulo fijo (p. ej. ±90°)
+    //    en vez de tener esto en cuenta, el resultado es un arquito
+    //    minúsculo pegado al Sol: técnicamente válido, pero invisible
+    //    comparado con la posición real de la sonda. Por eso el arco se
+    //    extiende hasta la distancia ACTUAL del cuerpo (con un margen),
+    //    en vez de hasta un ángulo arbitrario.
+    const esHiperbolica = e >= 1;
+    let nuMin, nuMax;
+
+    if (esHiperbolica) {
+        const p = aKm * (1 - e * e); // semi-latus rectum: siempre positivo para e > 1
+        const nuAsintota = Math.acos(-1 / e); // límite real del rango válido
+
+        const objetivoKm = (distanciaActualKm && distanciaActualKm > 0)
+            ? distanciaActualKm * 1.15 // un poco más allá de donde está ahora, para sugerir que la trayectoria sigue
+            : Math.abs(aKm) * (e + 1); // respaldo si no hay distancia actual disponible
+
+        let cosNuObjetivo = (p / objetivoKm - 1) / e;
+        cosNuObjetivo = Math.max(-1, Math.min(1, cosNuObjetivo));
+
+        nuMax = Math.min(Math.acos(cosNuObjetivo), nuAsintota * 0.995); // nunca tocar la asíntota exacta (r -> infinito)
+        nuMin = -nuMax;
+    } else {
+        nuMin = 0;
+        nuMax = 2 * Math.PI;
+    }
 
     const segmentos = 180;
     const puntos = [];
     for (let s = 0; s <= segmentos; s++) {
-        const nu = (s / segmentos) * 2 * Math.PI; // anomalía verdadera
+        const nu = nuMin + (s / segmentos) * (nuMax - nuMin);
         const rKm = (aKm * (1 - e * e)) / (1 + e * Math.cos(nu)); // ecuación polar de la elipse (foco = Sol/baricentro)
         const xPf = rKm * Math.cos(nu);
         const yPf = rKm * Math.sin(nu);
@@ -293,16 +386,19 @@ scene.add(marcadorBaricentro);
 
 // Hitbox invisible propio (más grande que el marcador visual, con el mismo
 // piso mínimo que usan los demás cuerpos), para que seguir siendo fácil de
-// clickear pese a que el marcador visual ahora es bastante más chico.
+// clickear pese a que el marcador visual ahora es bastante más chico. El
+// baricentro no tiene un modo real/exagerada propio, así que siempre usa el
+// factor "real" (2x) — no hay una versión "exagerada" de un punto de
+// referencia matemático.
 const hitboxBaricentro = new THREE.Mesh(
-    new THREE.SphereGeometry(calcularRadioAjustado(RADIO_BARICENTRO, RADIO_MINIMO_CLIC), 16, 16),
+    new THREE.SphereGeometry(calcularRadioHitbox(RADIO_BARICENTRO, true), 16, 16),
     new THREE.MeshBasicMaterial({ visible: false })
 );
 hitboxBaricentro.position.set(0, 0, 0);
 scene.add(hitboxBaricentro);
 
 const wireframeBaricentro = new THREE.Mesh(
-    new THREE.SphereGeometry(calcularRadioAjustado(RADIO_BARICENTRO, RADIO_MINIMO_WIREFRAME), 16, 16),
+    new THREE.SphereGeometry(calcularRadioWireframe(RADIO_BARICENTRO, true), 16, 16),
     new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.9 })
 );
 wireframeBaricentro.visible = false;
@@ -374,6 +470,7 @@ const posicionesPorNombre = new Map();
 function construirCuerpos(cuerpos) {
     let distanciaVisualMaxima = 0;
     posicionesPorNombre.clear();
+    const rangosLunas = calcularRangosLunas(cuerpos);
 
     Object.keys(cuerpos).forEach(nombre => {
         const data = cuerpos[nombre];
@@ -395,7 +492,7 @@ function construirCuerpos(cuerpos) {
             posicionPadre = posicionesPorNombre.get(data.cuerpo_padre);
         }
 
-        const factor = obtenerFactorEscalaPosicion(data);
+        const factor = obtenerFactorEscalaPosicion(nombre, data, cuerpos, rangosLunas);
         const posicionLocal = new THREE.Vector3(coords.x * factor, coords.z * factor, coords.y * factor);
         const posicion = posicionPadre.clone().add(posicionLocal);
         posicionesPorNombre.set(nombre, posicion);
@@ -450,15 +547,36 @@ function construirCuerpos(cuerpos) {
         scene.add(marcadorPunto);
         objetosCuerpos.push(marcadorPunto);
 
-        // Hitbox invisible: para la mayoría de los planetas, radio
-        // CONSTANTE (basado en el radio exagerado, no en el radio visual
-        // actual), para que el área clickeable no cambie al alternar el
-        // modo de tamaño. El Sol es la excepción: al ser el único cuerpo
-        // "central" junto al baricentro, su hitbox sigue de cerca su radio
-        // visual actual (factor 1.5), igual que el baricentro.
-        const radioClic = esSol
-            ? calcularRadioAjustado(radioVisual, RADIO_MINIMO_CLIC)
-            : calcularRadioHitbox(data);
+        // Hitbox invisible y wireframe: ambos siguen el radio visual actual
+        // del cuerpo (ver calcularRadioHitbox/calcularRadioWireframe), con
+        // factor 2x en modo "real" y 1.3x en modo "exagerada". El modo
+        // aplicable depende de si es luna (modoEscalaLuna) o no (modoTamano).
+        //
+        // Dos reducciones adicionales, encima del cálculo normal:
+        //
+        // - Misiones/satélites artificiales: su radio real es virtualmente
+        //   cero (son objetos de metros), así que su hitbox/wireframe queda
+        //   dominado casi siempre por los pisos mínimos (RADIO_MINIMO_CLIC /
+        //   RADIO_MINIMO_WIREFRAME) en vez del factor 2x/1.3x — se ven
+        //   desproporcionadamente grandes. Se reduce a un tercio, en ambos
+        //   modos (real y exagerada).
+        //
+        // - Planetas y lunas EN MODO REAL: el mismo problema de fondo, pero
+        //   más leve — sus radios reales también suelen quedar por debajo
+        //   de los pisos mínimos, así que casi todos terminan con el mismo
+        //   wireframe "de piso" en vez de algo proporcionalmente chico, y
+        //   se sienten grandes. Se reduce a un tercio SOLO en modo real (en
+        //   "exagerada" el radio_exagerado ya da un tamaño razonable, sin
+        //   depender del piso). El Sol no entra en esta reducción — su
+        //   radio real (0.174 unidades) es lo bastante grande como para que
+        //   el factor 2x normal ya se vea proporcional, sin tocar el piso.
+        const esModoReal = esLuna ? (modoEscalaLuna === 'real') : (modoTamano === 'real');
+        const reduccionMision = data.categoria === 'satelite' ? (1 / 3) : 1;
+        const reduccionRealPlanetaLuna =
+            esModoReal && (data.categoria === 'planeta' || data.categoria === 'luna') ? (1 / 3) : 1;
+        const reduccionTotal = reduccionMision * reduccionRealPlanetaLuna;
+
+        const radioClic = calcularRadioHitbox(radioVisual, esModoReal) * reduccionTotal;
 
         const hitbox = new THREE.Mesh(
             new THREE.SphereGeometry(radioClic, 16, 16),
@@ -468,12 +586,7 @@ function construirCuerpos(cuerpos) {
         scene.add(hitbox);
         objetosCuerpos.push(hitbox);
 
-        // Wireframe: para el Sol usa el mismo factor 1.5 ajustado al radio
-        // visual actual (en vez del factor 1.3 genérico), para que quede
-        // ceñido a su tamaño en pantalla igual que su hitbox.
-        const radioWireframe = esSol
-            ? calcularRadioAjustado(radioVisual, RADIO_MINIMO_WIREFRAME)
-            : calcularRadioWireframe(radioVisual);
+        const radioWireframe = calcularRadioWireframe(radioVisual, esModoReal) * reduccionTotal;
         const wireframe = new THREE.Mesh(
             new THREE.SphereGeometry(radioWireframe, 16, 16),
             new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.9 })
@@ -486,7 +599,8 @@ function construirCuerpos(cuerpos) {
         cuerposInteractivos.push({ meshRaycast: hitbox, wireframe, nombre, datos: data });
 
         if (elementos) {
-            const lineaOrbita = crearLineaOrbita(elementos, data.color, factor);
+            const distanciaActualKm = Math.sqrt(coords.x ** 2 + coords.y ** 2 + coords.z ** 2);
+            const lineaOrbita = crearLineaOrbita(elementos, data.color, factor, distanciaActualKm);
             // El aro se genera centrado en el origen local; se traslada al
             // padre acá (baricentro para planetas/Sol/satélites — sin
             // efecto, ya que posicionPadre es (0,0,0) — o el planeta padre
@@ -781,6 +895,13 @@ document.querySelectorAll('input[name="escala"]').forEach(radio => {
 document.querySelectorAll('input[name="tamano"]').forEach(radio => {
     radio.addEventListener('change', (evento) => {
         modoTamano = evento.target.value;
+        reconstruirConEscalaActual();
+    });
+});
+
+document.querySelectorAll('input[name="escala-luna"]').forEach(radio => {
+    radio.addEventListener('change', (evento) => {
+        modoEscalaLuna = evento.target.value;
         reconstruirConEscalaActual();
     });
 });

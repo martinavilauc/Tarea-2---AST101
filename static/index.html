@@ -7,6 +7,21 @@
         body { margin: 0; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
         canvas { display: block; }
 
+        #titulo-app {
+            position: absolute;
+            top: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #7f8ea1;
+            font-size: 11px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            z-index: 4;
+            pointer-events: none;
+            text-align: center;
+            white-space: nowrap;
+        }
+
         #ayuda {
             position: absolute;
             top: 62px;
@@ -310,6 +325,8 @@
 </head>
 <body>
 
+    <div id="titulo-app">Un paseo por el sistema solar</div>
+
     <div id="cargando">
         <div class="spinner"></div>
         <div>Consultando posiciones reales en JPL Horizons…</div>
@@ -373,6 +390,18 @@
             </label>
             <div class="descripcion">Radios agrandados a mano para que los cuerpos sean visibles sin acercar la cámara.</div>
 
+            <h3>Escala de lunas</h3>
+            <label>
+                <input type="radio" name="escala-luna" value="real" checked>
+                Real
+            </label>
+            <div class="descripcion">Órbita y tamaño reales de las lunas. Quedan casi pegadas a su planeta — hay que acercar mucho la cámara (clickear la luna en el índice ayuda).</div>
+            <label>
+                <input type="radio" name="escala-luna" value="exagerada">
+                Exagerada
+            </label>
+            <div class="descripcion">Órbita y tamaño de las lunas agrandados, en proporción a su propio planeta (no a las distancias planetarias), para que se vean como un anillo claro alrededor de él.</div>
+
             <!--
                 ACERCA DE — para cambiar este texto, solo edita el contenido
                 del <p id="acerca-de-texto"> de acá abajo. No requiere tocar
@@ -381,6 +410,11 @@
             <h3>Acerca de</h3>
             <p id="acerca-de-texto" class="descripcion" style="margin-left: 0; font-size: 12px; line-height: 1.5;">
                 Tarea 2 de AST-101, de la Licenciatura en Ciencias de la Computación.
+            </p>
+            <p class="descripcion" style="margin-left: 0; font-size: 12px; margin-top: 6px;">
+                <a href="https://github.com/martinavilauc/Tarea-2---AST101" target="_blank" rel="noopener" style="color: #9fe3f0;">
+                    martinavilauc/Tarea-2---AST101
+                </a>
             </p>
         </div>
     </div>

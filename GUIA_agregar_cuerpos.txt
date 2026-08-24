@@ -1,0 +1,236 @@
+==============================================================
+ GUÍA: cómo agregar un planeta, luna o satélite artificial nuevo
+==============================================================
+
+Todo el catálogo de cuerpos vive en UN SOLO LUGAR: el diccionario
+CUERPOS en main.py. El índice (menú izquierdo), las categorías,
+los aros de órbita y las imágenes se arman automáticamente a
+partir de ahí — normalmente NO hace falta tocar app.js ni
+index.html para agregar un cuerpo nuevo.
+
+
+--------------------------------------------------------------
+1) PASO A PASO
+--------------------------------------------------------------
+
+1. Buscar el ID de JPL Horizons del cuerpo que querés agregar:
+   https://ssd.jpl.nasa.gov/horizons/app.html
+   (buscar el nombre, el ID aparece entre paréntesis, p. ej.
+   "Pluto (999)" -> el id es "999").
+
+2. Abrir main.py y agregar una entrada nueva al diccionario
+   CUERPOS, siguiendo el mismo formato que las que ya existen
+   (ver la sección 2 de esta guía para el detalle de cada campo).
+
+3. Si es un cuerpo que se ve muy chico o muy grande comparado
+   con los demás, ajustar "radio_exagerado" a ojo (no tiene que
+   ser exacto, solo que se vea razonable en la escena).
+
+4. (Opcional pero recomendado) Agregar una imagen en
+   static/resources/ con el nombre correcto — ver sección 3.
+
+5. Reiniciar el servidor (uvicorn) y recargar la página. El
+   cuerpo nuevo va a aparecer solo en el índice, agrupado bajo
+   su categoría correspondiente, sin tocar nada de frontend.
+
+6. Si el cuerpo no aparece o da error, revisar la consola de
+   uvicorn: cada cuerpo que falla imprime el motivo exacto
+   (ver sección 5, "Cómo diagnosticar problemas").
+
+
+--------------------------------------------------------------
+2) CAMPOS DE CADA ENTRADA EN CUERPOS (main.py)
+--------------------------------------------------------------
+
+Ejemplo real (un planeta, Marte):
+
+    "Marte": {
+        "id": "499",
+        "color": "#c1440e",
+        "radio_km": 3389.5,
+        "radio_exagerado": 0.7,
+        "categoria": "planeta",
+        "cuerpo_padre": None,
+        "centro": "500@0",
+    },
+
+Ejemplo real (una luna, Fobos, que orbita Marte):
+
+    "Fobos": {
+        "id": "401",
+        "color": "#8a7f6e",
+        "radio_km": 11.1,
+        "radio_exagerado": 0.12,
+        "categoria": "luna",
+        "cuerpo_padre": "Marte",
+        "centro": "500@499",
+    },
+
+Qué significa cada campo:
+
+  id
+      El ID de JPL Horizons del cuerpo (string, entre comillas).
+      Para sondas/satélites artificiales suele ser negativo
+      (p. ej. "-31" para Voyager 1).
+
+  color
+      Color hexadecimal (string) usado para el mesh, el punto
+      marcador, el aro de órbita y el punto de color en el
+      índice. No tiene que ser exacto, alcanza con que se
+      distinga de los demás cuerpos cercanos.
+
+  radio_km
+      Radio REAL del cuerpo en kilómetros. Se usa en modo de
+      tamaño "real" y se muestra tal cual en el panel de
+      información. Para objetos muy chicos o de forma irregular
+      (asteroides, sondas) un valor aproximado alcanza — nunca
+      puede ser 0 (rompería la división al calcular el radio
+      visual), usar un número chico pero positivo si no aplica
+      bien (p. ej. 0.01).
+
+  radio_exagerado
+      Radio "a mano" que se usa en modo de tamaño "exagerada",
+      elegido para que el cuerpo sea visible y clickeable sin
+      acercar mucho la cámara. Los valores actuales van
+      aproximadamente entre 0.1 (satélites/lunas chicas) y 3
+      (el Sol) — usar ese rango como referencia.
+
+  categoria
+      Una de estas cuatro strings, exactamente así (en
+      minúsculas):
+        "sol"       -> solo la entrada del Sol debería usar esta.
+        "planeta"   -> Mercurio, Venus, ..., y cualquier planeta
+                       nuevo que agregues (o un planeta enano
+                       como Plutón, si querés tratarlo como tal).
+        "luna"      -> cualquier cuerpo que orbite un planeta.
+        "satelite"  -> sondas/naves (heliocéntricas, no orbitan
+                       un planeta específico).
+      El índice (menú izquierdo) agrupa automáticamente por este
+      campo. "sol" se agrupa junto con "planeta" en el índice
+      (ver construirIndice en app.js si en algún momento se
+      quiere separar).
+
+  cuerpo_padre
+      None si el cuerpo orbita el baricentro del sistema solar
+      (Sol, planetas, satélites/sondas). Si es una luna, el
+      NOMBRE EXACTO (la clave del diccionario, con tildes y
+      mayúsculas tal cual) del planeta que orbita, p. ej.
+      "Júpiter" (con tilde), no "Jupiter".
+      Este nombre tiene que existir como otra clave del mismo
+      diccionario CUERPOS, o la luna no se va a poder ubicar
+      (va a aparecer un aviso en la consola del navegador y
+      simplemente no se dibuja).
+
+  centro
+      El parámetro CENTER que se le manda a JPL Horizons:
+        "500@0"    -> baricentro del sistema solar. Usar esto
+                      para el Sol, los planetas y las sondas.
+        "500@<id>" -> centrado en el planeta con ese id de
+                      Horizons. Usar esto para lunas, con el id
+                      DEL PLANETA PADRE (no el id de la luna).
+                      Ejemplos ya usados en el proyecto:
+                        Tierra  (399) -> "500@399"
+                        Marte   (499) -> "500@499"
+                        Júpiter (599) -> "500@599"
+                        Saturno (699) -> "500@699"
+      Si el centro está mal (p. ej. te olvidaste de cambiarlo a
+      "500@0" para las lunas), las coordenadas de la luna van a
+      venir dominadas por la órbita del planeta alrededor del
+      Sol, y su órbita alrededor del planeta (mucho más chica)
+      quedaría invisible o con una forma rarísima.
+
+  es_sol
+      Campo especial que SOLO debería estar presente (con
+      valor True) en la entrada del Sol. Hace que el backend NO
+      le pida elementos orbitales (no tiene sentido que el Sol
+      "orbite" el baricentro). Para cualquier cuerpo nuevo, NO
+      incluir este campo (ni siquiera con valor False — alcanza
+      con omitirlo).
+
+
+--------------------------------------------------------------
+3) IMAGEN DEL CUERPO (opcional)
+--------------------------------------------------------------
+
+El panel de información busca una imagen en:
+
+    static/resources/<slug>.jpg
+
+donde <slug> es el nombre del cuerpo (la clave del diccionario)
+en minúsculas, sin tildes, sin paréntesis, y con los espacios
+reemplazados por guiones. Ejemplos:
+
+    "Marte"               -> marte.jpg
+    "Júpiter"              -> jupiter.jpg
+    "James Webb (JWST)"    -> james-webb-jwst.jpg
+    "Parker Solar Probe"   -> parker-solar-probe.jpg
+
+Si el archivo no existe, la imagen simplemente no se muestra
+(no rompe nada). Se puede usar cualquier imagen cuadrada — no
+hace falta que sea una foto real, con que exista alcanza.
+
+
+--------------------------------------------------------------
+4) SI SE AGREGAN VARIAS LUNAS AL MISMO PLANETA
+--------------------------------------------------------------
+
+No hace falta hacer nada especial: el orden entre lunas del
+mismo planeta (para separarlas visualmente en modo "exagerada")
+se calcula automáticamente en el frontend según su distancia
+real al planeta (semieje mayor si está disponible, si no la
+distancia instantánea) — no depende del orden en que estén
+escritas en el diccionario.
+
+
+--------------------------------------------------------------
+5) CÓMO DIAGNOSTICAR PROBLEMAS
+--------------------------------------------------------------
+
+- El cuerpo no aparece en absoluto:
+    Revisar la consola de uvicorn (el servidor). Cada cuerpo que
+    falla imprime un WARNING o ERROR con su nombre y el motivo
+    exacto (id equivocado, JPL Horizons no devolvió coordenadas
+    legibles, error de red, etc). El banner rojo que aparece en
+    la página también lista qué cuerpos fallaron y por qué.
+
+- Aparece el planeta pero no su luna:
+    Revisar la consola del NAVEGADOR (no la del servidor): si
+    "cuerpo_padre" no coincide exactamente con el nombre de otro
+    cuerpo del catálogo, va a aparecer un console.warn ahí
+    explicando cuál nombre no se pudo resolver.
+
+- El cuerpo aparece pero en una posición sin sentido / la órbita
+  se ve mal:
+    Revisar el campo "centro". Es el error más común al agregar
+    una luna nueva (ver sección 2, campo "centro").
+
+- Demasiadas solicitudes / errores 503 de JPL Horizons:
+    Cuantos más cuerpos tenga el catálogo, más solicitudes hace
+    el servidor en cada consulta (cada cuerpo pide coordenadas +
+    elementos orbitales, salvo el Sol). Si al agregar varios
+    cuerpos empiezan a aparecer más errores 503, se puede bajar
+    aún más MAX_WORKERS_SIMULTANEOS en main.py (ya está en 3) o
+    tener paciencia — el sistema reintenta automáticamente con
+    espera creciente.
+
+
+--------------------------------------------------------------
+6) EJEMPLO COMPLETO: agregar Plutón como planeta enano
+--------------------------------------------------------------
+
+En main.py, dentro de CUERPOS, agregar (el id 999 y los datos
+físicos son reales, JPL Horizons sí tiene efemérides de Plutón):
+
+    "Plutón": {
+        "id": "999",
+        "color": "#c9b8a0",
+        "radio_km": 1188.3,
+        "radio_exagerado": 0.5,
+        "categoria": "planeta",
+        "cuerpo_padre": None,
+        "centro": "500@0",
+    },
+
+Nada más — va a aparecer solo en el índice bajo "Planetas", con
+su propio aro de órbita, panel de información, y va a poder
+clickearse igual que cualquier otro cuerpo.
