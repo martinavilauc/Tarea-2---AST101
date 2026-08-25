@@ -5,6 +5,6 @@ Tarea 2 de AST-101
 | Nombre | Correo | Github |  
 |--------|---------|--------|
 | Martín Ávila | martin.avila@estudiante.uc.cl | martinavilauc |
-|    |    |    
+| Mateo Cruz | mateo.cruz@estudiante.uc.cl | Mat12999
 |    |    |  
 |    |    |
