@@ -2,13 +2,24 @@
 // 1. Configuración de la escena 3D
 // ============================================================
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 8000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.001, 45000);
+// logarithmicDepthBuffer: true evita el "z-fighting" (objetos que
+// desaparecen o parpadean al acercar la cámara) que aparece cuando la
+// relación far/near de la cámara es muy grande — acá es de 45.000.000:1
+// (near=0.001, para poder acercarse a cuerpos en escala real como la
+// Tierra, ~0.0016 unidades; far=45000, para que las estrellas de fondo
+// sigan siendo visibles). Sin esto, el buffer de profundidad estándar no
+// tiene precisión suficiente para distinguir bien los objetos cercanos.
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
 
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
+// Nunca dejar que la cámara se acerque más que el "near" plane (0.001): si
+// lo cruza, lo que esté justo ahí se recorta y desaparece (distinto del
+// z-fighting de arriba, pero con el mismo síntoma visible).
+controls.minDistance = 0.01;
 controls.target.set(0, 0, 0); // el baricentro (origen de las coordenadas) queda como centro de órbita de la cámara
 camera.position.set(0, 55, 85);
 
@@ -28,7 +39,7 @@ function crearEstrellas() {
     const cantidad = 1500;
     const posiciones = new Float32Array(cantidad * 3);
     for (let idx = 0; idx < cantidad; idx++) {
-        const radio = 1200 + Math.random() * 800;
+        const radio = 24000 + Math.random() * 16000; // 20x más lejos que antes (1200-2000 -> 24000-40000)
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(2 * Math.random() - 1);
         posiciones[idx * 3] = radio * Math.sin(phi) * Math.cos(theta);
@@ -69,6 +80,10 @@ const UNIDADES_POR_RAIZ_UA = 14;
 const KM_POR_UNIDAD_REAL = 4000000;
 
 let modoEscala = 'real'; // 'real' | 'exagerada'
+
+// Mostrar/ocultar los aros de órbita de todos los cuerpos (independiente de
+// mostrar/ocultar el cuerpo en sí, ver el índice). Por defecto se muestran.
+let mostrarOrbitas = true;
 
 function escalarDistancia(distanciaKm) {
     if (modoEscala === 'real') {
@@ -547,36 +562,43 @@ function construirCuerpos(cuerpos) {
         scene.add(marcadorPunto);
         objetosCuerpos.push(marcadorPunto);
 
-        // Hitbox invisible y wireframe: ambos siguen el radio visual actual
-        // del cuerpo (ver calcularRadioHitbox/calcularRadioWireframe), con
-        // factor 2x en modo "real" y 1.3x en modo "exagerada". El modo
-        // aplicable depende de si es luna (modoEscalaLuna) o no (modoTamano).
+        // Hitbox invisible y wireframe: qué tan lejos quedan de la
+        // superficie real del cuerpo depende de la categoría.
         //
-        // Dos reducciones adicionales, encima del cálculo normal:
+        // - Sol y planetas: SIN piso mínimo — se ciñen directamente a un
+        //   múltiplo de su propio radio visual actual (factor 2x en modo
+        //   "real", 1.3x en "exagerada"), igual que ya hacía el Sol. En
+        //   escala real esto los deja muy chicos para clickear con
+        //   precisión con el mouse (el radio real de Júpiter, el más
+        //   grande, es de apenas 0.0175 unidades) — para eso está el
+        //   índice (menú izquierdo), que no depende de acertarle con el
+        //   mouse.
         //
-        // - Misiones/satélites artificiales: su radio real es virtualmente
-        //   cero (son objetos de metros), así que su hitbox/wireframe queda
-        //   dominado casi siempre por los pisos mínimos (RADIO_MINIMO_CLIC /
-        //   RADIO_MINIMO_WIREFRAME) en vez del factor 2x/1.3x — se ven
-        //   desproporcionadamente grandes. Se reduce a un tercio, en ambos
-        //   modos (real y exagerada).
+        // - Lunas: mismo criterio, pero con 2/3 del factor que usan los
+        //   planetas (más ceñidas a su propia superficie que su planeta).
         //
-        // - Planetas y lunas EN MODO REAL: el mismo problema de fondo, pero
-        //   más leve — sus radios reales también suelen quedar por debajo
-        //   de los pisos mínimos, así que casi todos terminan con el mismo
-        //   wireframe "de piso" en vez de algo proporcionalmente chico, y
-        //   se sienten grandes. Se reduce a un tercio SOLO en modo real (en
-        //   "exagerada" el radio_exagerado ya da un tamaño razonable, sin
-        //   depender del piso). El Sol no entra en esta reducción — su
-        //   radio real (0.174 unidades) es lo bastante grande como para que
-        //   el factor 2x normal ya se vea proporcional, sin tocar el piso.
+        // - Misiones/satélites artificiales: su radio real es
+        //   virtualmente cero (son objetos de metros), así que acá SÍ se
+        //   usa un piso mínimo (RADIO_MINIMO_CLIC / RADIO_MINIMO_WIREFRAME,
+        //   ver calcularRadioHitbox/calcularRadioWireframe) para que sigan
+        //   siendo clickeables, reducido a un tercio para que no se vean
+        //   desproporcionadamente grandes comparados con lo diminutos que
+        //   son en realidad.
         const esModoReal = esLuna ? (modoEscalaLuna === 'real') : (modoTamano === 'real');
-        const reduccionMision = data.categoria === 'satelite' ? (1 / 3) : 1;
-        const reduccionRealPlanetaLuna =
-            esModoReal && (data.categoria === 'planeta' || data.categoria === 'luna') ? (1 / 3) : 1;
-        const reduccionTotal = reduccionMision * reduccionRealPlanetaLuna;
 
-        const radioClic = calcularRadioHitbox(radioVisual, esModoReal) * reduccionTotal;
+        let radioClic, radioWireframe;
+        if (data.categoria === 'satelite') {
+            const reduccionMision = 1 / 3;
+            radioClic = calcularRadioHitbox(radioVisual, esModoReal) * reduccionMision;
+            radioWireframe = calcularRadioWireframe(radioVisual, esModoReal) * reduccionMision;
+        } else {
+            const factorCuerpo = factorRadioInteractivo(esModoReal) * (esLuna ? (2 / 3) : 1);
+            // Piso técnico minúsculo, solo para evitar geometría de radio 0
+            // (no busca garantizar que sea clickeable — ver comentario arriba).
+            const radioMinimoTecnico = 0.0005;
+            radioClic = Math.max(radioVisual * factorCuerpo, radioMinimoTecnico);
+            radioWireframe = Math.max(radioVisual * factorCuerpo, radioMinimoTecnico);
+        }
 
         const hitbox = new THREE.Mesh(
             new THREE.SphereGeometry(radioClic, 16, 16),
@@ -586,7 +608,6 @@ function construirCuerpos(cuerpos) {
         scene.add(hitbox);
         objetosCuerpos.push(hitbox);
 
-        const radioWireframe = calcularRadioWireframe(radioVisual, esModoReal) * reduccionTotal;
         const wireframe = new THREE.Mesh(
             new THREE.SphereGeometry(radioWireframe, 16, 16),
             new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.9 })
@@ -598,7 +619,7 @@ function construirCuerpos(cuerpos) {
 
         cuerposInteractivos.push({ meshRaycast: hitbox, wireframe, nombre, datos: data });
 
-        if (elementos) {
+        if (elementos && mostrarOrbitas) {
             const distanciaActualKm = Math.sqrt(coords.x ** 2 + coords.y ** 2 + coords.z ** 2);
             const lineaOrbita = crearLineaOrbita(elementos, data.color, factor, distanciaActualKm);
             // El aro se genera centrado en el origen local; se traslada al
@@ -777,9 +798,6 @@ function construirContenidoInfo(nombre, datos) {
             <tr><td>Radio real</td><td>${formatearKm(datos.radio_km)}</td></tr>
         </table>
         <p class="nota" style="margin-top:6px; border-top:none; padding-top:0;">
-            ${modoTamano === 'real'
-                ? 'Mostrando el tamaño real, proporcional a la distancia. Por eso puede ser casi invisible.'
-                : 'Mostrando el tamaño exagerado (elegido a mano en main.py), no el real.'}
         </p>
 
         <h3>Coordenadas (relativas a ${datos.cuerpo_padre || 'el baricentro'})</h3>
@@ -832,9 +850,7 @@ function construirContenidoInfo(nombre, datos) {
         <p class="nota">
             Estas coordenadas${elementos || esSol ? ' y elementos orbitales' : ''} se consultan
             al sistema de efemérides JPL Horizons de la NASA
-            (<code>ssd.jpl.nasa.gov/api/horizons.api</code>), ${descripcionFecha}.
-            El servidor los guarda en caché ${descripcionCache}, pero el dato en sí viene
-            de un cálculo dinámico de la NASA, no de un valor fijo en el código.
+            (<code>ssd.jpl.nasa.gov/api/horizons.api</code>).
         </p>
     `;
 
@@ -904,6 +920,11 @@ document.querySelectorAll('input[name="escala-luna"]').forEach(radio => {
         modoEscalaLuna = evento.target.value;
         reconstruirConEscalaActual();
     });
+});
+
+document.getElementById('input-mostrar-orbitas').addEventListener('change', (evento) => {
+    mostrarOrbitas = evento.target.checked;
+    reconstruirConEscalaActual();
 });
 
 // Selector de fecha: cambiarlo dispara una nueva consulta al backend (no es

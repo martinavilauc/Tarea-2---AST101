@@ -332,7 +332,7 @@
         <div>Consultando posiciones reales en JPL Horizons…</div>
     </div>
 
-    <div id="ayuda">Pasa el mouse sobre un cuerpo para resaltarlo, o haz click para ver su información. El punto blanco central es el baricentro del sistema solar.</div>
+    <div id="ayuda">Haz click en un planeta o usa la enciclopedia (☰) para seleccionar un cuerpo celeste y ver su informacion.</div>
     <div id="banner-error"></div>
 
     <button id="indice-boton" title="Índice">☰</button>
@@ -402,6 +402,13 @@
             </label>
             <div class="descripcion">Órbita y tamaño de las lunas agrandados, en proporción a su propio planeta (no a las distancias planetarias), para que se vean como un anillo claro alrededor de él.</div>
 
+            <h3>Órbitas</h3>
+            <label>
+                <input type="checkbox" id="input-mostrar-orbitas" checked>
+                Mostrar órbitas
+            </label>
+            <div class="descripcion">Aros de órbita de todos los cuerpos (Sol y baricentro no tienen). Se puede combinar con mostrar/ocultar cuerpos individuales desde el índice.</div>
+
             <!--
                 ACERCA DE — para cambiar este texto, solo edita el contenido
                 del <p id="acerca-de-texto"> de acá abajo. No requiere tocar
@@ -409,11 +416,11 @@
             -->
             <h3>Acerca de</h3>
             <p id="acerca-de-texto" class="descripcion" style="margin-left: 0; font-size: 12px; line-height: 1.5;">
-                Tarea 2 de AST-101, de la Licenciatura en Ciencias de la Computación.
+                Tarea 2 de AST-101, de la Licenciatura en Ingenieria en Ciencias de la Computación, Datos obtenidos en vivo de JPL Horizons (NASA).
             </p>
             <p class="descripcion" style="margin-left: 0; font-size: 12px; margin-top: 6px;">
                 <a href="https://github.com/martinavilauc/Tarea-2---AST101" target="_blank" rel="noopener" style="color: #9fe3f0;">
-                    martinavilauc/Tarea-2---AST101
+                    Codigo en Github: martinavilauc/Tarea-2---AST101
                 </a>
             </p>
         </div>
