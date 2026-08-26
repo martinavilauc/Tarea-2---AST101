@@ -551,6 +551,30 @@ function construirCuerpos(cuerpos) {
             luzSol.position.copy(posicion);
         }
 
+        // Anillos de Saturno: un plano con forma de anillo (RingGeometry),
+        // "acostado" (rotado 90° en X) para que quede horizontal en vez de
+        // vertical, con el mismo mapeo de ejes que el resto de la escena
+        // (Y = arriba). El radio interior/exterior es proporcional al radio
+        // visual ACTUAL de Saturno (se recalcula si cambia el modo de
+        // tamaño), usando aproximadamente la proporción real de sus
+        // anillos principales (de ~1.2x a ~2.3x el radio del planeta).
+        if (nombre === "Saturno") {
+            const radioInteriorAnillo = radioVisual * 1.2;
+            const radioExteriorAnillo = radioVisual * 2.3;
+            const geoAnillo = new THREE.RingGeometry(radioInteriorAnillo, radioExteriorAnillo, 64);
+            const matAnillo = new THREE.MeshBasicMaterial({
+                color: data.color,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.55,
+            });
+            const anillo = new THREE.Mesh(geoAnillo, matAnillo);
+            anillo.rotation.x = -Math.PI / 2;
+            anillo.position.copy(posicion);
+            scene.add(anillo);
+            objetosCuerpos.push(anillo);
+        }
+
         // Marcador puntual: visible como un punto de tamaño fijo en pantalla
         // (no se achica con la distancia), para poder ubicar el cuerpo a
         // simple vista incluso cuando su radio real es sub-píxel.
@@ -773,6 +797,44 @@ function crearImagenCuerpo(nombre) {
     return `<img class="imagen-cuerpo" src="resources/${slug}.jpg" alt="${nombre}" onerror="this.style.display='none'">`;
 }
 
+// Contenedor para el texto de static/resources/<slug>.txt, debajo de la
+// imagen. Se llena de forma asíncrona (ver cargarDescripcionCuerpo) porque
+// a diferencia de la imagen (que el navegador carga solo), un archivo de
+// texto hay que pedirlo con fetch() y esperar la respuesta. data-nombre
+// sirve para descartar la respuesta si el usuario ya abrió otro cuerpo
+// antes de que termine de cargar.
+function crearContenedorDescripcion(nombre) {
+    return `<p class="descripcion-cuerpo" id="descripcion-cuerpo-actual" data-nombre="${nombre}">Cargando información…</p>`;
+}
+
+// Pide static/resources/<slug>.txt y lo muestra en el contenedor de arriba.
+// Si el archivo no existe (todavía no se escribió uno para ese cuerpo), el
+// contenedor se saca del todo — igual que la imagen, no hay una sección
+// "vacía" visible, simplemente no aparece.
+async function cargarDescripcionCuerpo(nombre) {
+    const slug = slugCuerpo(nombre);
+    let texto = null;
+    try {
+        const res = await fetch(`resources/${slug}.txt`);
+        if (res.ok) texto = (await res.text()).trim();
+    } catch (error) {
+        texto = null;
+    }
+
+    // El panel pudo haberse cerrado, o el usuario pudo haber abierto otro
+    // cuerpo mientras esta solicitud estaba en camino — en ese caso el
+    // contenedor de acá ya no es el vigente (o ya no existe) y no hay que
+    // tocar nada.
+    const contenedor = document.getElementById('descripcion-cuerpo-actual');
+    if (!contenedor || contenedor.dataset.nombre !== nombre) return;
+
+    if (texto) {
+        contenedor.textContent = texto;
+    } else {
+        contenedor.remove();
+    }
+}
+
 // Arma el HTML del panel para un cuerpo (Sol/planeta) o para el baricentro.
 function construirContenidoInfo(nombre, datos) {
     if (!datos) {
@@ -793,11 +855,15 @@ function construirContenidoInfo(nombre, datos) {
 
     let html = `
         ${crearImagenCuerpo(nombre)}
+        ${crearContenedorDescripcion(nombre)}
         <h3>Tamaño</h3>
         <table>
             <tr><td>Radio real</td><td>${formatearKm(datos.radio_km)}</td></tr>
         </table>
         <p class="nota" style="margin-top:6px; border-top:none; padding-top:0;">
+            ${modoTamano === 'real'
+                ? 'Mostrando el tamaño real, proporcional a la distancia. Por eso puede ser casi invisible.'
+                : 'Mostrando el tamaño exagerado (elegido a mano en main.py), no el real.'}
         </p>
 
         <h3>Coordenadas (relativas a ${datos.cuerpo_padre || 'el baricentro'})</h3>
@@ -850,7 +916,9 @@ function construirContenidoInfo(nombre, datos) {
         <p class="nota">
             Estas coordenadas${elementos || esSol ? ' y elementos orbitales' : ''} se consultan
             al sistema de efemérides JPL Horizons de la NASA
-            (<code>ssd.jpl.nasa.gov/api/horizons.api</code>).
+            (<code>ssd.jpl.nasa.gov/api/horizons.api</code>), ${descripcionFecha}.
+            El servidor los guarda en caché ${descripcionCache}, pero el dato en sí viene
+            de un cálculo dinámico de la NASA, no de un valor fijo en el código.
         </p>
     `;
 
@@ -862,6 +930,10 @@ function mostrarInfoCuerpo(nombre, datos) {
     elInfoSubtitulo.textContent = subtituloCuerpo(datos);
     elInfoContenido.innerHTML = construirContenidoInfo(nombre, datos);
     abrirPanel(elPanelInfo);
+
+    if (datos) {
+        cargarDescripcionCuerpo(nombre);
+    }
 }
 
 function subtituloCuerpo(datos) {

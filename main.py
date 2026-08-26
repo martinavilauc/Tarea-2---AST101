@@ -94,10 +94,6 @@ CUERPOS = {
                     "categoria": "luna", "cuerpo_padre": "Júpiter", "centro": "500@599"},
     "Titán":      {"id": "606", "color": "#d9a441", "radio_km": 2574.7, "radio_exagerado": 0.33,
                     "categoria": "luna", "cuerpo_padre": "Saturno", "centro": "500@699"},
-    "Amaltea":    {"id": "505", "color": "#b5573a", "radio_km": 83.5, "radio_exagerado": 0.15,
-                    "categoria": "luna", "cuerpo_padre": "Júpiter", "centro": "500@599"},
-    "Himalia":    {"id": "506", "color": "#4a4a52", "radio_km": 69.8, "radio_exagerado": 0.13,
-                    "categoria": "luna", "cuerpo_padre": "Júpiter", "centro": "500@599"},
 
     # --- Satélites artificiales / sondas (heliocéntricas, centro = baricentro) ---
     # Nota: la ISS y otros satélites en órbita terrestre baja NO están acá
