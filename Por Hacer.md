@@ -10,3 +10,4 @@ Preguntar a Martin Avila por dudas del codigo.
 
 # BUGS:
 - No funciona en librewolf.
+- El selector de fechas se "activa" apenas escribir la fecha (debe activarse al presionar enter).
