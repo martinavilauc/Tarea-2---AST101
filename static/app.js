@@ -1250,6 +1250,15 @@ function distanciaEnfoque(cuerpo) {
     return Math.max(radioBase * 9, distanciaMaxLuna * 1.4, 1.2);
 }
 
+// Radio visual REAL de la esfera de un cuerpo (no el del hitbox, que puede
+// ser distinto) — se usa para no dejar que la cámara pueda meterse dentro
+// de la esfera al hacer zoom (ver centrarCamaraEnCuerpo). null para el
+// baricentro (no tiene "datos"), que usa su propio radio fijo.
+function radioVisualDeCuerpo(cuerpo) {
+    if (!cuerpo.datos) return RADIO_BARICENTRO;
+    return calcularRadioVisual(cuerpo.datos);
+}
+
 function centrarCamaraEnCuerpo(cuerpo) {
     const posicion = cuerpo.meshRaycast.position;
 
@@ -1262,6 +1271,18 @@ function centrarCamaraEnCuerpo(cuerpo) {
     const distanciaCamara = distanciaEnfoque(cuerpo);
     controls.target.copy(posicion);
     camera.position.copy(posicion).addScaledVector(direccion, distanciaCamara);
+
+    // El límite de acercamiento (minDistance) se ajusta al radio REAL de la
+    // esfera de este cuerpo específico, con un margen del 5%. Sin esto,
+    // minDistance quedaba fijo en un valor global (0.01) sin relación con
+    // el tamaño de lo que se está mirando: en cuerpos grandes (p. ej. el
+    // Sol en escala exagerada, radio 3) la cámara podía terminar DENTRO de
+    // la esfera antes de llegar al límite, y ahí se ve "recortada" — las
+    // caras internas de la esfera no se renderizan. Con el límite ajustado,
+    // se puede acercar hasta rozar la superficie real, pero nunca cruzarla.
+    const radioSuperficie = radioVisualDeCuerpo(cuerpo);
+    controls.minDistance = Math.max(radioSuperficie * 1.05, 0.001);
+
     controls.update();
 }
 
