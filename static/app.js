@@ -862,8 +862,8 @@ function construirContenidoInfo(nombre, datos) {
         </table>
         <p class="nota" style="margin-top:6px; border-top:none; padding-top:0;">
             ${modoTamano === 'real'
-                ? 'Mostrando el tamaño real, proporcional a la distancia. Por eso puede ser casi invisible.'
-                : 'Mostrando el tamaño exagerado (elegido a mano en main.py), no el real.'}
+                ? '(Mostrando el tamaño real)'
+                : '(Mostrando el tamaño exagerado, no real)'}
         </p>
 
         <h3>Coordenadas (relativas a ${datos.cuerpo_padre || 'el baricentro'})</h3>
@@ -891,10 +891,7 @@ function construirContenidoInfo(nombre, datos) {
     } else if (esSol) {
         html += `
             <h3>Elementos orbitales</h3>
-            <p>El Sol no tiene "elementos orbitales" respecto al baricentro: orbitar
-            el propio centro de masa del sistema no tiene sentido físico. Su leve
-            desplazamiento respecto al baricentro (visible arriba) se debe solo a la
-            atracción gravitacional de los planetas, sobre todo Júpiter.</p>
+            <p>El Sol no tiene "elementos orbitales" respecto al baricentro.</p>
         `;
     } else {
         html += `
@@ -916,9 +913,7 @@ function construirContenidoInfo(nombre, datos) {
         <p class="nota">
             Estas coordenadas${elementos || esSol ? ' y elementos orbitales' : ''} se consultan
             al sistema de efemérides JPL Horizons de la NASA
-            (<code>ssd.jpl.nasa.gov/api/horizons.api</code>), ${descripcionFecha}.
-            El servidor los guarda en caché ${descripcionCache}, pero el dato en sí viene
-            de un cálculo dinámico de la NASA, no de un valor fijo en el código.
+            (<code>ssd.jpl.nasa.gov/api/horizons.api</code>).
         </p>
     `;
 
