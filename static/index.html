@@ -35,12 +35,36 @@
             z-index: 5;
         }
 
-        /* Botón de índice (menú, esquina superior izquierda — espejo del
-           botón de configuración de la derecha) */
-        #indice-boton {
+        /* Botón para mostrar/ocultar toda la interfaz superpuesta (título,
+           ayuda, botones, paneles) — deja solo la escena 3D visible. Este
+           botón NUNCA se oculta a sí mismo, o no habría forma de volver a
+           mostrar la interfaz. */
+        #ui-toggle-boton {
             position: absolute;
             top: 12px;
             left: 12px;
+            z-index: 8;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(10,14,22,0.7);
+            color: #cfd8e3;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #ui-toggle-boton:hover { background: rgba(20,26,38,0.9); }
+
+        /* Botón de índice (menú) — antes en la esquina superior izquierda,
+           se corrió a la derecha (junto al de configuración) para hacerle
+           lugar al botón de alternar interfaz de arriba. */
+        #indice-boton {
+            position: absolute;
+            top: 12px;
+            right: 62px;
             z-index: 7;
             width: 38px;
             height: 38px;
@@ -332,12 +356,23 @@
 </head>
 <body>
 
-    <div id="titulo-app">Un paseo por el sistema solar</div>
+    <button id="ui-toggle-boton" title="Ocultar interfaz">⛶</button>
 
     <div id="cargando">
         <div class="spinner"></div>
         <div>Consultando posiciones reales en JPL Horizons…</div>
     </div>
+
+    <!--
+        Todo lo que sigue (título, ayuda, botones, paneles) se agrupa acá
+        adentro para poder mostrarlo/ocultarlo de una sola vez con el botón
+        de arriba (#ui-toggle-boton), que queda siempre visible afuera de
+        este contenedor — si estuviera adentro, no habría forma de volver a
+        mostrar la interfaz una vez ocultada.
+    -->
+    <div id="capa-ui">
+
+    <div id="titulo-app">Un paseo por el sistema solar</div>
 
     <div id="ayuda">Haz click en un planeta o usa la enciclopedia (☰) para seleccionar un cuerpo celeste y ver su informacion.</div>
     <div id="banner-error"></div>
@@ -449,6 +484,8 @@
         </div>
         <div class="panel-cuerpo" id="info-contenido"></div>
     </div>
+
+    </div><!-- /#capa-ui -->
 
     <!-- Lógica principal en JS -->
     <script src="app.js"></script>

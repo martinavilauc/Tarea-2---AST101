@@ -11,3 +11,4 @@ Preguntar a Martin Avila por dudas del codigo.
 # BUGS:
 - No funciona en librewolf.
 - El selector de fechas se "activa" apenas escribir la fecha (debe activarse al presionar enter).
+- Pluton esta fuera del aro de orbita (no es por la cantidad de segmentos del aro).

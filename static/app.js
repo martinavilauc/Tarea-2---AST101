@@ -299,7 +299,7 @@ function perifocalAEclipica(xPf, yPf, incDeg, nodoDeg, argPeriDeg) {
 // (0,0,0) — el llamador debe trasladarlo a la posición del cuerpo padre
 // (ver construirCuerpos) para lunas; para planetas el padre es el
 // baricentro, así que no hace falta trasladar nada.
-function crearLineaOrbita(elementos, color, factor, distanciaActualKm) {
+function crearLineaOrbita(elementos, color, factor, distanciaActualKm, segmentos = 720) {
     const aKm = elementos.semieje_mayor_km;
     const e = elementos.excentricidad;
 
@@ -345,7 +345,6 @@ function crearLineaOrbita(elementos, color, factor, distanciaActualKm) {
         nuMax = 2 * Math.PI;
     }
 
-    const segmentos = 180;
     const puntos = [];
     for (let s = 0; s <= segmentos; s++) {
         const nu = nuMin + (s / segmentos) * (nuMax - nuMin);
@@ -645,6 +644,10 @@ function construirCuerpos(cuerpos) {
 
         if (elementos && mostrarOrbitas) {
             const distanciaActualKm = Math.sqrt(coords.x ** 2 + coords.y ** 2 + coords.z ** 2);
+            // segmentos: usa el valor por defecto (720) para todos los
+            // cuerpos por igual — una sola medida común, sin variar según
+            // la categoría (los satélites/sondas no reciben un valor
+            // distinto ni más bajo).
             const lineaOrbita = crearLineaOrbita(elementos, data.color, factor, distanciaActualKm);
             // El aro se genera centrado en el origen local; se traslada al
             // padre acá (baricentro para planetas/Sol/satélites — sin
@@ -1083,6 +1086,15 @@ function crearItemIndice(nombre, datos) {
 // Arma el índice completo (una sola vez, la primera vez que llegan datos):
 // Planetas (incluido el Sol) / Lunas (agrupadas por su planeta padre) /
 // Satélites artificiales. Cada categoría con su propia casilla maestra.
+// Distancia real (en km) de un cuerpo al Sol/baricentro, usando sus propias
+// coordenadas. Solo tiene sentido para cuerpos que orbitan el baricentro
+// (Sol, planetas, satélites) — las coordenadas de una luna son relativas a
+// su planeta padre, no al Sol, así que esta función NO sirve para ordenar
+// lunas directamente (ver más abajo cómo se usa ahí).
+function distanciaHeliocentricaKm(datos) {
+    return Math.sqrt(datos.coordenadas.x ** 2 + datos.coordenadas.y ** 2 + datos.coordenadas.z ** 2);
+}
+
 function construirIndice(cuerpos) {
     const contenedor = document.getElementById('indice-contenido');
     contenedor.innerHTML = '';
@@ -1099,6 +1111,16 @@ function construirIndice(cuerpos) {
             return c === grupo.clave || (grupo.incluirSol && c === 'sol');
         });
         if (nombresGrupo.length === 0) return;
+
+        // Orden por cercanía real al Sol (distancia actual, no promedio —
+        // por eso Plutón puede aparecer antes que Neptuno si ese día está
+        // en la parte de su órbita más cercana al Sol que Neptuno, algo
+        // que de hecho pasa periódicamente). No afecta a las lunas acá
+        // (esas se ordenan aparte, ver más abajo), porque sus coordenadas
+        // son relativas a su planeta, no al Sol.
+        if (!grupo.agruparPorPadre) {
+            nombresGrupo.sort((a, b) => distanciaHeliocentricaKm(cuerpos[a]) - distanciaHeliocentricaKm(cuerpos[b]));
+        }
 
         nombresPorCategoriaIndice[grupo.clave] = nombresGrupo;
 
@@ -1136,7 +1158,20 @@ function construirIndice(cuerpos) {
                 if (!porPadre[padre]) { porPadre[padre] = []; padresVistos.push(padre); }
                 porPadre[padre].push(n);
             });
+
+            // Grupos (por planeta padre) ordenados por la cercanía real de
+            // ESE planeta al Sol; dentro de cada grupo, las lunas ordenadas
+            // por su propia cercanía a su planeta (sus coordenadas ya son
+            // relativas a él, así que acá distanciaHeliocentricaKm sí sirve
+            // directamente pese al nombre).
+            padresVistos.sort((a, b) => {
+                const distA = cuerpos[a] ? distanciaHeliocentricaKm(cuerpos[a]) : Infinity;
+                const distB = cuerpos[b] ? distanciaHeliocentricaKm(cuerpos[b]) : Infinity;
+                return distA - distB;
+            });
             padresVistos.forEach(padre => {
+                porPadre[padre].sort((a, b) => distanciaHeliocentricaKm(cuerpos[a]) - distanciaHeliocentricaKm(cuerpos[b]));
+
                 const subtitulo = document.createElement('li');
                 subtitulo.className = 'indice-subgrupo-titulo';
                 subtitulo.textContent = padre;
@@ -1182,6 +1217,21 @@ botonIndice.addEventListener('click', () => {
 });
 document.getElementById('cerrar-indice').addEventListener('click', () => {
     elPanelIndice.style.display = 'none';
+});
+
+// Mostrar/ocultar toda la interfaz superpuesta (título, ayuda, botones,
+// paneles) de una sola vez, dejando solo la escena 3D visible — útil para
+// capturas de pantalla o simplemente para ver el sistema solar sin nada
+// encima. El botón que lo controla vive FUERA de #capa-ui a propósito (ver
+// el comentario en index.html), así que nunca se oculta a sí mismo.
+const botonUiToggle = document.getElementById('ui-toggle-boton');
+const capaUi = document.getElementById('capa-ui');
+let interfazVisible = true;
+
+botonUiToggle.addEventListener('click', () => {
+    interfazVisible = !interfazVisible;
+    capaUi.style.display = interfazVisible ? '' : 'none';
+    botonUiToggle.title = interfazVisible ? 'Ocultar interfaz' : 'Mostrar interfaz';
 });
 
 // ============================================================
