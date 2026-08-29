@@ -2,6 +2,7 @@
 Recuerden hacer backups antes y despues de los cambios.  
 Preguntar a Martin Avila por dudas del codigo.
 # Por Hacer:  
+- Acercar la camara al seleccionar un cuerpo.
 - Reescribir los txt de informacion en /static/resources.
 - (HECHO)Implementar alternar interfaz.
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
