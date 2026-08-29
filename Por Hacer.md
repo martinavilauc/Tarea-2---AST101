@@ -7,6 +7,7 @@ Preguntar a Martin Avila por dudas del codigo.
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
 - Implementar controles (cambiar de planeta seleccionado, alternar interfaz, etc) y mostrarlos en pantalla.
 - Soporte movil (Pantalla vertical y menus desplegables... falta conceptualizar)(Edge permite "simular" pantalla movil en devtools (menu F12)).
+- Implementar Texturas (NASA dispone de material 3d entre otras cosas que pueden ser utiles).
 - Endpoints (Mover diccionarios, importar json, crear archivo de constantes, es decir: importar en main.py y no definir.)
 
 # BUGS:
