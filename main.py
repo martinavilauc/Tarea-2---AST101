@@ -76,6 +76,14 @@ CUERPOS = {
     # trata igual que los demás (categoría "planeta") por simplicidad.
     "Plutón":   {"id": "999", "color": "#c9b8a0", "radio_km": 1188.3, "radio_exagerado": 0.5,
                  "categoria": "planeta", "cuerpo_padre": None, "centro": "500@0"},
+    # Ceres también es un planeta enano (el más grande del cinturón de
+    # asteroides, entre Marte y Júpiter), tratado igual que Plutón. Nota:
+    # "1;" es la convención de JPL Horizons para pedir el cuerpo menor #1
+    # (Ceres) en vez de un cuerpo mayor — si este id llegara a fallar,
+    # revisar el log del servidor y buscar el id correcto en
+    # https://ssd.jpl.nasa.gov/horizons/app.html
+    "Ceres":    {"id": "1;", "color": "#8f8578", "radio_km": 469.7, "radio_exagerado": 0.35,
+                 "categoria": "planeta", "cuerpo_padre": None, "centro": "500@0"},
 
     # --- Lunas (centro = planetocéntrico del padre correspondiente) ---
     "Luna":       {"id": "301", "color": "#c9c9c9", "radio_km": 1737.4, "radio_exagerado": 0.35,
@@ -94,6 +102,10 @@ CUERPOS = {
                     "categoria": "luna", "cuerpo_padre": "Júpiter", "centro": "500@599"},
     "Titán":      {"id": "606", "color": "#d9a441", "radio_km": 2574.7, "radio_exagerado": 0.33,
                     "categoria": "luna", "cuerpo_padre": "Saturno", "centro": "500@699"},
+    "Encélado":   {"id": "602", "color": "#eef4f7", "radio_km": 252.1, "radio_exagerado": 0.15,
+                    "categoria": "luna", "cuerpo_padre": "Saturno", "centro": "500@699"},
+    "Tritón":     {"id": "801", "color": "#e8c9a8", "radio_km": 1353.4, "radio_exagerado": 0.3,
+                    "categoria": "luna", "cuerpo_padre": "Neptuno", "centro": "500@899"},
 
     # --- Satélites artificiales / sondas (heliocéntricas, centro = baricentro) ---
     # Nota: la ISS y otros satélites en órbita terrestre baja NO están acá
@@ -157,7 +169,12 @@ def _con_reintentos(func, *args, nombre="", etiqueta="", **kwargs):
 
 
 def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
-    """Devuelve (nombre, datos_o_None, mensaje_error_o_None).
+    """Devuelve (nombre, datos_o_None, error_o_None). "error", si existe, es
+    un dict {"mensaje": str, "categoria": str} — la categoría viaja junto al
+    mensaje para que el frontend pueda decidir cómo tratar el error sin
+    tener que mantener una lista aparte de qué cuerpos son satélites (p. ej.
+    para no mostrar como "error" que una sonda no exista todavía en una
+    fecha anterior a su lanzamiento).
 
     Nunca deja que una excepción de red se pierda en silencio: si algo falla,
     queda registrado en el log del servidor (uvicorn) con el nombre del
@@ -165,6 +182,7 @@ def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
     qué un cuerpo (o todos) no aparecen en la escena.
     """
     centro = info.get("centro", "500@0")
+    categoria = info["categoria"]
 
     try:
         coords = _con_reintentos(
@@ -172,7 +190,7 @@ def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
         )
     except Exception as exc:
         logger.error("Excepción pidiendo coordenadas de %s (id %s): %s", nombre, info["id"], exc)
-        return nombre, None, f"excepción al pedir coordenadas: {exc}"
+        return nombre, None, {"mensaje": f"excepción al pedir coordenadas: {exc}", "categoria": categoria}
 
     if coords is None:
         logger.warning(
@@ -181,7 +199,7 @@ def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
             "o que la fecha pedida esté fuera del rango que cubre Horizons.",
             nombre, info["id"], centro,
         )
-        return nombre, None, "JPL Horizons no devolvió coordenadas legibles"
+        return nombre, None, {"mensaje": "JPL Horizons no devolvió coordenadas legibles", "categoria": categoria}
 
     elementos = None
     if not info.get("es_sol"):
@@ -204,7 +222,7 @@ def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
         "color": info["color"],
         "radio_km": info["radio_km"],
         "radio_exagerado": info["radio_exagerado"],
-        "categoria": info["categoria"],
+        "categoria": categoria,
         "cuerpo_padre": info.get("cuerpo_padre"),
         "coordenadas": coords,
         "elementos_orbitales": elementos,

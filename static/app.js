@@ -597,31 +597,23 @@ function construirCuerpos(cuerpos) {
         //   índice (menú izquierdo), que no depende de acertarle con el
         //   mouse.
         //
-        // - Lunas: mismo criterio, pero con 2/3 del factor que usan los
-        //   planetas (más ceñidas a su propia superficie que su planeta).
-        //
-        // - Misiones/satélites artificiales: su radio real es
-        //   virtualmente cero (son objetos de metros), así que acá SÍ se
-        //   usa un piso mínimo (RADIO_MINIMO_CLIC / RADIO_MINIMO_WIREFRAME,
-        //   ver calcularRadioHitbox/calcularRadioWireframe) para que sigan
-        //   siendo clickeables, reducido a un tercio para que no se vean
-        //   desproporcionadamente grandes comparados con lo diminutos que
-        //   son en realidad.
+        // - Lunas y misiones/satélites artificiales: mismo criterio, pero
+        //   con 2/3 del factor que usan los planetas (más ceñidas a su
+        //   propia superficie). Antes los satélites tenían un piso mínimo
+        //   grande aparte (para compensar que su radio real es
+        //   virtualmente cero, son objetos de metros) que terminaba
+        //   dejando su zona de mouse notoriamente más grande que la de una
+        //   luna — ahora usan exactamente la misma fórmula que las lunas,
+        //   sin ese piso aparte.
         const esModoReal = esLuna ? (modoEscalaLuna === 'real') : (modoTamano === 'real');
+        const esLunaOSatelite = esLuna || data.categoria === 'satelite';
 
-        let radioClic, radioWireframe;
-        if (data.categoria === 'satelite') {
-            const reduccionMision = 1 / 3;
-            radioClic = calcularRadioHitbox(radioVisual, esModoReal) * reduccionMision;
-            radioWireframe = calcularRadioWireframe(radioVisual, esModoReal) * reduccionMision;
-        } else {
-            const factorCuerpo = factorRadioInteractivo(esModoReal) * (esLuna ? (2 / 3) : 1);
-            // Piso técnico minúsculo, solo para evitar geometría de radio 0
-            // (no busca garantizar que sea clickeable — ver comentario arriba).
-            const radioMinimoTecnico = 0.0005;
-            radioClic = Math.max(radioVisual * factorCuerpo, radioMinimoTecnico);
-            radioWireframe = Math.max(radioVisual * factorCuerpo, radioMinimoTecnico);
-        }
+        const factorCuerpo = factorRadioInteractivo(esModoReal) * (esLunaOSatelite ? (2 / 3) : 1);
+        // Piso técnico minúsculo, solo para evitar geometría de radio 0
+        // (no busca garantizar que sea clickeable — ver comentario arriba).
+        const radioMinimoTecnico = 0.0005;
+        const radioClic = Math.max(radioVisual * factorCuerpo, radioMinimoTecnico);
+        const radioWireframe = Math.max(radioVisual * factorCuerpo, radioMinimoTecnico);
 
         const hitbox = new THREE.Mesh(
             new THREE.SphereGeometry(radioClic, 16, 16),
@@ -719,17 +711,27 @@ async function cargarSistemaSolar(fecha) {
         console.warn("Cuerpos con error al consultar JPL Horizons:", errores);
     }
 
-    if (nombres.length === 0) {
+    // Al elegir una fecha específica (no "ahora"), es ESPERABLE que una
+    // sonda no tenga datos si la fecha es anterior a su lanzamiento — no es
+    // un error real, así que no se muestra en el banner (sigue quedando en
+    // la consola del navegador para quien quiera revisarlo). En modo
+    // "ahora" si se muestran, porque ahí sí sería una falla genuina.
+    const erroresAMostrar = fechaSeleccionada
+        ? Object.fromEntries(Object.entries(errores).filter(([, e]) => e.categoria !== 'satelite'))
+        : errores;
+    const totalErroresAMostrar = Object.keys(erroresAMostrar).length;
+
+    if (nombres.length === 0 && totalErroresAMostrar > 0) {
         mostrarError(
             "La API respondió, pero no trajo ningún cuerpo celeste (probablemente JPL Horizons " +
             "no está devolviendo datos legibles). Detalle por cuerpo:\n" +
-            Object.entries(errores).map(([n, e]) => `• ${n}: ${e}`).join("\n") +
+            Object.entries(erroresAMostrar).map(([n, e]) => `• ${n}: ${e.mensaje}`).join("\n") +
             "\n\nRevisa la consola del servidor uvicorn: ahora imprime el motivo exacto de cada fallo."
         );
-    } else if (Object.keys(errores).length > 0) {
+    } else if (totalErroresAMostrar > 0) {
         mostrarError(
-            `Se dibujaron ${nombres.length} de ${nombres.length + Object.keys(errores).length} cuerpos. Fallaron:\n` +
-            Object.entries(errores).map(([n, e]) => `• ${n}: ${e}`).join("\n")
+            `Se dibujaron ${nombres.length} de ${nombres.length + totalErroresAMostrar} cuerpos. Fallaron:\n` +
+            Object.entries(erroresAMostrar).map(([n, e]) => `• ${n}: ${e.mensaje}`).join("\n")
         );
     }
 
@@ -997,16 +999,31 @@ document.getElementById('input-mostrar-orbitas').addEventListener('change', (eve
     reconstruirConEscalaActual();
 });
 
-// Selector de fecha: cambiarlo dispara una nueva consulta al backend (no es
-// solo un cambio de escala visual, son datos distintos).
+// Selector de fecha: a propósito NO se dispara con el evento "change" del
+// input nativo — al escribir la fecha a mano (en vez de usar el calendario
+// desplegable), "change" puede disparar con cada segmento que se completa
+// (día, mes, año), incluso antes de que el usuario termine de escribir el
+// año completo, mandando fechas a medio terminar al backend y generando
+// errores. En cambio, la consulta se dispara solo con una confirmación
+// explícita: el botón "Ir", o Enter con el foco en el campo.
 const inputFecha = document.getElementById('input-fecha');
+const botonConfirmarFecha = document.getElementById('confirmar-fecha');
 const botonFechaActual = document.getElementById('usar-fecha-actual');
 const elFechaDescripcion = document.getElementById('fecha-descripcion');
 
-inputFecha.addEventListener('change', () => {
-    if (!inputFecha.value) return;
+function confirmarFechaElegida() {
+    if (!inputFecha.value) return; // campo vacío o fecha todavía incompleta: no hacer nada
     elFechaDescripcion.textContent = `Mostrando posiciones para el ${inputFecha.value} (mediodía UTC).`;
     cargarSistemaSolar(inputFecha.value);
+}
+
+botonConfirmarFecha.addEventListener('click', confirmarFechaElegida);
+
+inputFecha.addEventListener('keydown', (evento) => {
+    if (evento.key === 'Enter') {
+        evento.preventDefault();
+        confirmarFechaElegida();
+    }
 });
 
 botonFechaActual.addEventListener('click', () => {
