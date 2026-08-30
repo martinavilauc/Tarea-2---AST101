@@ -6,6 +6,7 @@ Preguntar a Martin Avila por dudas del codigo.
 - Reescribir los txt de informacion en /static/resources.
 - (HECHO)Implementar alternar interfaz.
 - Agregar Caronte.
+- Unificar modo "exagerado" (el modo de tamaño mas grande y orbitas mas cercanas)
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
 - Implementar controles (cambiar de planeta seleccionado, alternar interfaz, etc) y mostrarlos en pantalla.
 - Soporte movil (Pantalla vertical y menus desplegables... falta conceptualizar)(Edge permite "simular" pantalla movil en devtools (menu F12)).
