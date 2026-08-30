@@ -440,6 +440,13 @@ function mostrarError(mensaje) {
 // reconstruir la escena al cambiar de escala sin volver a pedirlos.
 let ultimosCuerpos = null;
 
+// Nombre del último cuerpo enfocado (por click o desde el índice), o null
+// si no hay ninguno. Se usa en reconstruirConEscalaActual() para que la
+// cámara mantenga su posición RELATIVA a ese cuerpo al cambiar de escala o
+// al mostrar/ocultar las órbitas, en vez de resetear la vista al sistema
+// completo cada vez (ver centrarCamaraEnCuerpo, que la actualiza).
+let nombreCuerpoEnfocado = null;
+
 // El índice (menú izquierdo) se arma una sola vez, la primera vez que llegan
 // datos: el catálogo de cuerpos (categoría, cuerpo padre) es fijo — lo que
 // cambia con la fecha son las coordenadas, no qué cuerpos existen.
@@ -813,11 +820,24 @@ async function cargarSistemaSolar(fecha) {
 function reconstruirConEscalaActual() {
     if (!ultimosCuerpos) return; // todavía no llegó la primera respuesta de la API
     limpiarCuerpos();
-    // Mismo motivo que en cargarSistemaSolar: no queremos quedar enfocados
-    // en la posición vieja de un cuerpo si estaba enfocado antes del cambio.
-    controls.target.set(0, 0, 0);
     const distanciaMaxima = construirCuerpos(ultimosCuerpos);
-    encuadrarCamara(distanciaMaxima);
+
+    // Si había un cuerpo enfocado (click previo, o desde el índice), se
+    // vuelve a enfocar después de reconstruir — centrarCamaraEnCuerpo ya
+    // preserva el ángulo de vista actual, así que la cámara mantiene su
+    // posición relativa al cuerpo en vez de saltar a la vista del sistema
+    // completo. Si ese cuerpo ya no existe en la reconstrucción (p. ej. se
+    // ocultó desde el índice), se cae de vuelta al encuadre general.
+    const cuerpoAReenfocar = nombreCuerpoEnfocado
+        ? cuerposInteractivos.find(c => c.nombre === nombreCuerpoEnfocado)
+        : null;
+
+    if (cuerpoAReenfocar) {
+        centrarCamaraEnCuerpo(cuerpoAReenfocar);
+    } else {
+        controls.target.set(0, 0, 0);
+        encuadrarCamara(distanciaMaxima);
+    }
 }
 
 // ============================================================
@@ -1395,6 +1415,8 @@ function radioVisualDeCuerpo(cuerpo) {
 }
 
 function centrarCamaraEnCuerpo(cuerpo) {
+    nombreCuerpoEnfocado = cuerpo.nombre;
+
     const posicion = cuerpo.meshRaycast.position;
 
     const direccion = camera.position.clone().sub(controls.target);

@@ -77,12 +77,13 @@ CUERPOS = {
     "Plutón":   {"id": "999", "color": "#c9b8a0", "radio_km": 1188.3, "radio_exagerado": 0.5,
                  "categoria": "planeta", "cuerpo_padre": None, "centro": "500@0"},
     # Ceres también es un planeta enano (el más grande del cinturón de
-    # asteroides, entre Marte y Júpiter), tratado igual que Plutón. Nota:
-    # "1;" es la convención de JPL Horizons para pedir el cuerpo menor #1
-    # (Ceres) en vez de un cuerpo mayor — si este id llegara a fallar,
-    # revisar el log del servidor y buscar el id correcto en
-    # https://ssd.jpl.nasa.gov/horizons/app.html
-    "Ceres":    {"id": "1;", "color": "#8f8578", "radio_km": 469.7, "radio_exagerado": 0.35,
+    # asteroides, entre Marte y Júpiter), tratado igual que Plutón. Se usa
+    # su SPK-ID ("2000001", el identificador dedicado de JPL Horizons para
+    # efemérides) en vez del atajo de designación "1;" — este último quedó
+    # resolviendo mal (Ceres aparecía pegada al Sol, con coordenadas casi
+    # nulas). Si el SPK-ID también fallara, revisar el log del servidor y
+    # buscar el id correcto en https://ssd.jpl.nasa.gov/horizons/app.html
+    "Ceres":    {"id": "2000001", "color": "#8f8578", "radio_km": 469.7, "radio_exagerado": 0.35,
                  "categoria": "planeta", "cuerpo_padre": None, "centro": "500@0"},
 
     # --- Lunas (centro = planetocéntrico del padre correspondiente) ---
@@ -106,6 +107,8 @@ CUERPOS = {
                     "categoria": "luna", "cuerpo_padre": "Saturno", "centro": "500@699"},
     "Tritón":     {"id": "801", "color": "#e8c9a8", "radio_km": 1353.4, "radio_exagerado": 0.3,
                     "categoria": "luna", "cuerpo_padre": "Neptuno", "centro": "500@899"},
+    "Caronte":    {"id": "901", "color": "#a89a8c", "radio_km": 606.0, "radio_exagerado": 0.2,
+                    "categoria": "luna", "cuerpo_padre": "Plutón", "centro": "500@999"},
 
     # --- Satélites artificiales / sondas (heliocéntricas, centro = baricentro) ---
     # Nota: la ISS y otros satélites en órbita terrestre baja NO están acá
