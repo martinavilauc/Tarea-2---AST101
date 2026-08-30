@@ -17,3 +17,4 @@ Preguntar a Martin Avila por dudas del codigo.
 - (ARREGLADO)El selector de fechas se "activa" apenas escribir la fecha (debe activarse al presionar enter).
 - (ARREGLADO)Pluton esta fuera del aro de orbita (no es por la cantidad de segmentos del aro).
 - Ceres esta pegado al sol.
+- Al quitar o poner orbita (y en general al cambiar settings) la camara se reinicia.
