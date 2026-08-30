@@ -719,6 +719,17 @@ function construirCuerpos(cuerpos) {
 // Reencuadra la cámara para que el cuerpo más lejano quede visible, sin
 // perder el ángulo de vista actual (mantiene la misma dirección, solo
 // ajusta la distancia).
+// Recuerda la última distancia "de encuadre completo" aplicada (ya con el
+// ×1.6 + 5 de la fórmula de acá abajo), para poder calcular cuánto se
+// acercó/alejó el usuario en términos RELATIVOS y aplicar ese mismo nivel
+// de zoom después de reconstruir la escena (cambio de escala, fecha,
+// mostrar/ocultar órbitas, etc.) — sin esto, cualquier reconstrucción
+// volvía siempre a la distancia por defecto, "reseteando" el zoom manual
+// del usuario. Se invalida (null) en centrarCamaraEnCuerpo, porque ahí la
+// cámara pasa a relacionarse con la distancia a un cuerpo puntual, no con
+// el encuadre del sistema completo.
+let ultimaDistanciaEncuadre = null;
+
 function encuadrarCamara(distanciaVisualMaxima) {
     if (!(distanciaVisualMaxima > 0)) return;
 
@@ -728,9 +739,19 @@ function encuadrarCamara(distanciaVisualMaxima) {
     }
     direccion.normalize();
 
-    const distanciaCamara = distanciaVisualMaxima * 1.6 + 5;
+    const distanciaBase = distanciaVisualMaxima * 1.6 + 5;
+    let distanciaCamara = distanciaBase;
+
+    if (ultimaDistanciaEncuadre) {
+        const distanciaActual = camera.position.distanceTo(controls.target);
+        const factorZoom = distanciaActual / ultimaDistanciaEncuadre;
+        distanciaCamara = distanciaBase * factorZoom;
+    }
+
     camera.position.copy(controls.target).addScaledVector(direccion, distanciaCamara);
     controls.update();
+
+    ultimaDistanciaEncuadre = distanciaBase;
 }
 
 // Fecha actualmente consultada: null = tiempo real ("ahora"), o 'YYYY-MM-DD'
@@ -833,7 +854,7 @@ function reconstruirConEscalaActual() {
         : null;
 
     if (cuerpoAReenfocar) {
-        centrarCamaraEnCuerpo(cuerpoAReenfocar);
+        centrarCamaraEnCuerpo(cuerpoAReenfocar, true);
     } else {
         controls.target.set(0, 0, 0);
         encuadrarCamara(distanciaMaxima);
@@ -1295,7 +1316,11 @@ function seleccionarDesdeIndice(nombre) {
     const cuerpo = cuerposInteractivos.find(c => c.nombre === nombre);
     if (cuerpo) {
         mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
-        centrarCamaraEnCuerpo(cuerpo);
+        // true: si es el mismo cuerpo que ya estaba enfocado, preserva el
+        // zoom manual en vez de resetear a la distancia por defecto (si es
+        // un cuerpo distinto, esto no tiene efecto — centrarCamaraEnCuerpo
+        // ya distingue ambos casos por nombre).
+        centrarCamaraEnCuerpo(cuerpo, true);
     }
 }
 
@@ -1414,8 +1439,27 @@ function radioVisualDeCuerpo(cuerpo) {
     return calcularRadioVisual(cuerpo.datos);
 }
 
-function centrarCamaraEnCuerpo(cuerpo) {
+// Distancia base ("por defecto") de la última vez que se llamó a
+// centrarCamaraEnCuerpo, junto con el nombre de ese cuerpo — se usa para
+// preservar el zoom manual del usuario cuando se vuelve a enfocar el MISMO
+// cuerpo tras una reconstrucción (ver reconstruirConEscalaActual), en vez
+// de resetear siempre a la distancia calculada por distanciaEnfoque().
+let ultimaDistanciaEnfoqueBase = null;
+
+// "preservarZoom": true solo cuando quien llama es una RECONSTRUCCIÓN (no
+// una selección nueva del usuario) — si además el cuerpo es el mismo que ya
+// estaba enfocado, se mantiene la proporción de zoom manual en vez de
+// volver a la distancia por defecto.
+function centrarCamaraEnCuerpo(cuerpo, preservarZoom = false) {
+    const esMismoCuerpoQueAntes = preservarZoom && nombreCuerpoEnfocado === cuerpo.nombre;
     nombreCuerpoEnfocado = cuerpo.nombre;
+    // La memoria de zoom del encuadre "sistema completo" ya no aplica: a
+    // partir de acá la cámara se relaciona con la distancia a ESTE cuerpo,
+    // no con distanciaVisualMaxima. Si más adelante se vuelve a la vista
+    // general (ver reconstruirConEscalaActual), conviene que arranque de la
+    // distancia por defecto en vez de un factor de zoom que ya no tiene
+    // sentido en ese contexto.
+    ultimaDistanciaEncuadre = null;
 
     const posicion = cuerpo.meshRaycast.position;
 
@@ -1425,7 +1469,16 @@ function centrarCamaraEnCuerpo(cuerpo) {
     }
     direccion.normalize();
 
-    const distanciaCamara = distanciaEnfoque(cuerpo);
+    const distanciaBase = distanciaEnfoque(cuerpo);
+    let distanciaCamara = distanciaBase;
+
+    if (esMismoCuerpoQueAntes && ultimaDistanciaEnfoqueBase) {
+        const distanciaActual = camera.position.distanceTo(controls.target);
+        const factorZoom = distanciaActual / ultimaDistanciaEnfoqueBase;
+        distanciaCamara = distanciaBase * factorZoom;
+    }
+    ultimaDistanciaEnfoqueBase = distanciaBase;
+
     controls.target.copy(posicion);
     camera.position.copy(posicion).addScaledVector(direccion, distanciaCamara);
 
@@ -1448,7 +1501,11 @@ function onClickEscena(event) {
     const cuerpo = cuerpoBajoElMouse();
     if (cuerpo) {
         mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
-        centrarCamaraEnCuerpo(cuerpo);
+        // true: si es el mismo cuerpo que ya estaba enfocado (clickearlo de
+        // nuevo), preserva el zoom manual en vez de resetear a la distancia
+        // por defecto. Si es un cuerpo distinto, no tiene efecto: siempre
+        // usa el encuadre por defecto para ese cuerpo nuevo.
+        centrarCamaraEnCuerpo(cuerpo, true);
     }
 }
 renderer.domElement.addEventListener('click', onClickEscena);
