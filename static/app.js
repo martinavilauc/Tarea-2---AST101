@@ -477,6 +477,58 @@ function limpiarCuerpos() {
 // desactivada) igual se ubique donde correspondería su padre.
 const posicionesPorNombre = new Map();
 
+// ============================================================
+// 4b. Texturas de superficie (Sol, planetas y lunas)
+// ============================================================
+// Busca static/textures/<slug>.jpg (mismo slug que las fotos del panel de
+// información, pero en una carpeta aparte — son imágenes distintas: acá se
+// necesita un mapa equirectangular para envolver la esfera, no una foto
+// cualquiera). Si el archivo no existe, el cuerpo se queda con su color
+// plano de siempre, sin ningún error visible.
+//
+// Las texturas se cachean en memoria (slug -> THREE.Texture) para no volver
+// a pedirle la imagen al navegador cada vez que se reconstruye la escena
+// (cambio de escala, fecha, etc.) — el mismo objeto Texture se puede
+// reutilizar en materiales nuevos sin problema.
+const cargadorTexturas = new THREE.TextureLoader();
+const cacheTexturas = new Map();
+
+// Solo estas categorías tienen textura (no tiene mucho sentido para
+// satélites/sondas artificiales, que son metal, no una superficie con
+// mapa; ni para el baricentro, que no es un cuerpo físico).
+function tieneTextura(categoria) {
+    return categoria === 'sol' || categoria === 'planeta' || categoria === 'luna';
+}
+
+// Aplica la textura a un material ya creado (Sol y planetas usan
+// MeshBasicMaterial/MeshStandardMaterial respectivamente, ambos soportan
+// ".map" igual). Si carga después de que este material ya no esté en
+// pantalla (p. ej. el usuario cambió de escala mientras cargaba), asignarla
+// igual no genera ningún problema — simplemente no se llega a ver.
+function aplicarTexturaCuerpo(material, nombre) {
+    const slug = slugCuerpo(nombre);
+
+    const yaCacheada = cacheTexturas.get(slug);
+    if (yaCacheada) {
+        material.map = yaCacheada;
+        material.color.set(0xffffff); // no teñir la textura con el color plano de respaldo
+        material.needsUpdate = true;
+        return;
+    }
+
+    cargadorTexturas.load(
+        `textures/${slug}.jpg`,
+        (textura) => {
+            cacheTexturas.set(slug, textura);
+            material.map = textura;
+            material.color.set(0xffffff);
+            material.needsUpdate = true;
+        },
+        undefined,
+        () => { /* sin textura para este cuerpo todavía: se queda con el color plano */ }
+    );
+}
+
 // Dibuja el Sol y los planetas a partir de los datos ya recibidos de la API,
 // usando el modoEscala/modoTamano actuales y el estado de visibilidad del
 // índice (ver sección 10). Se puede llamar varias veces (p. ej. al cambiar
@@ -541,6 +593,9 @@ function construirCuerpos(cuerpos) {
         const mat = esSol
             ? new THREE.MeshBasicMaterial({ color: data.color })
             : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.9, metalness: 0 });
+        if (tieneTextura(data.categoria)) {
+            aplicarTexturaCuerpo(mat, nombre);
+        }
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.copy(posicion);
         scene.add(mesh);
@@ -1296,7 +1351,8 @@ renderer.domElement.addEventListener('pointermove', onPointerMoveEscena);
 // ej. Júpiter), se amplía para que también entren en el encuadre — si no,
 // quedarían fuera de cámara pese a estar visibles en la escena.
 function distanciaEnfoque(cuerpo) {
-    const radioBase = cuerpo.meshRaycast.geometry.parameters.radius;
+    const radioHitbox = cuerpo.meshRaycast.geometry.parameters.radius;
+    const radioVisual = radioVisualDeCuerpo(cuerpo);
     let distanciaMaxLuna = 0;
 
     if (ultimosCuerpos) {
@@ -1309,7 +1365,24 @@ function distanciaEnfoque(cuerpo) {
         });
     }
 
-    return Math.max(radioBase * 9, distanciaMaxLuna * 1.4, 1.2);
+    // La distancia principal se basa en el radio VISUAL real de la esfera
+    // (no en el del hitbox — desde que el hitbox pasó a ser proporcional al
+    // radio visual con distintos factores según categoría/modo, ya no era
+    // un buen indicador de "qué tan grande se ve el cuerpo en pantalla", y
+    // la cámara terminaba quedando demasiado lejos como para distinguir la
+    // esfera con claridad). 4x el radio deja la esfera ocupando una buena
+    // parte de la pantalla sin llegar a recortarse.
+    const distanciaPorRadioVisual = radioVisual * 4;
+    // Salvaguarda: nunca menos que un par de veces el hitbox, para cuerpos
+    // donde el hitbox termina siendo más grande que el radio visual.
+    const distanciaMinimaHitbox = radioHitbox * 2;
+
+    // El piso absoluto es chico a propósito (no 1.2 como antes): ese valor
+    // dominaba por completo en escala real, dejando la cámara igual de
+    // lejos sin importar el cuerpo — la protección real contra quedar
+    // pegado/adentro de la esfera ya la da controls.minDistance, calculado
+    // aparte en centrarCamaraEnCuerpo.
+    return Math.max(distanciaPorRadioVisual, distanciaMinimaHitbox, distanciaMaxLuna * 1.4, 0.01);
 }
 
 // Radio visual REAL de la esfera de un cuerpo (no el del hitbox, que puede
