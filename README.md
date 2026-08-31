@@ -8,4 +8,4 @@ Tarea 2 de AST-101
 | Martín Ávila | martin.avila@estudiante.uc.cl | martinavilauc |
 | Mateo Cruz | mateo.cruz@estudiante.uc.cl | Mat12999
 | Renato Sanhueza  | renato.sanhueza@estudiante.uc.cl    | zapaionh  
-| Juaquín Lorca |  | joaquinlorca |
+| Joaquín Lorca | joaquinlorca@uc.cl | joaquinlorca |
