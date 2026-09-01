@@ -2,7 +2,12 @@
 // 1. Configuración de la escena 3D
 // ============================================================
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.001, 45000);
+// near arranca en 0.05 (el mismo valor por defecto que se usa para la vista
+// del sistema completo, ver cargarSistemaSolar/reconstruirConEscalaActual);
+// se ajusta dinámicamente y de forma más chica solo al enfocar un cuerpo
+// específico (ver centrarCamaraEnCuerpo), para no arrastrar una relación
+// far/near innecesariamente extrema el resto del tiempo.
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 45000);
 // logarithmicDepthBuffer: true evita el "z-fighting" (objetos que
 // desaparecen o parpadean al acercar la cámara) que aparece cuando la
 // relación far/near de la cámara es muy grande — acá es de 45.000.000:1
@@ -27,12 +32,16 @@ camera.position.set(0, 55, 85);
 // Los planetas usan MeshStandardMaterial para que se vean con volumen (lado
 // iluminado / lado oscuro), así que necesitan una fuente de luz real. Se
 // agrega una luz puntual en el origen del Sol (se reposiciona más abajo,
-// una vez que sabemos su posición real) y una luz ambiental tenue para que
-// el lado oscuro no quede 100% negro.
+// una vez que sabemos su posición real) y una luz ambiental MUY tenue —
+// a propósito casi nula, para que el lado oscuro quede casi negro, como en
+// una foto real del espacio (sin atmósfera no hay luz que rebote hacia el
+// lado que no mira al Sol). Si quedara en 0 exacto, el lado oscuro sería
+// negro absoluto y perdería toda forma; con un resto mínimo se alcanza a
+// distinguir que sigue siendo una esfera.
 const luzSol = new THREE.PointLight(0xffffff, 2.2, 0, 0.4);
 luzSol.position.set(0, 0, 0);
 scene.add(luzSol);
-scene.add(new THREE.AmbientLight(0x404040, 0.8));
+scene.add(new THREE.AmbientLight(0x1a1a1a, 0.06));
 
 // Fondo estrellado simple, solo estético.
 function crearEstrellas() {
@@ -830,6 +839,12 @@ async function cargarSistemaSolar(fecha) {
     // encuadrar el sistema completo en vez de quedar centrado en una
     // posición que puede ya no existir con los nuevos datos.
     controls.target.set(0, 0, 0);
+    // El near plane vuelve a un valor por defecto razonable (no el mínimo
+    // extremo que se usa al enfocar cuerpos diminutos en escala real — ver
+    // centrarCamaraEnCuerpo) para no arrastrar una relación far/near
+    // innecesariamente extrema a la vista general del sistema.
+    camera.near = 0.05;
+    camera.updateProjectionMatrix();
     const distanciaMaxima = construirCuerpos(cuerpos);
     encuadrarCamara(distanciaMaxima);
 
@@ -857,6 +872,11 @@ function reconstruirConEscalaActual() {
         centrarCamaraEnCuerpo(cuerpoAReenfocar, true);
     } else {
         controls.target.set(0, 0, 0);
+        // Mismo motivo que en cargarSistemaSolar: volver a un near plane
+        // razonable para la vista general, en vez de arrastrar el valor
+        // extremo que pudo haber quedado de un enfoque anterior.
+        camera.near = 0.05;
+        camera.updateProjectionMatrix();
         encuadrarCamara(distanciaMaxima);
     }
 }
@@ -1483,15 +1503,25 @@ function centrarCamaraEnCuerpo(cuerpo, preservarZoom = false) {
     camera.position.copy(posicion).addScaledVector(direccion, distanciaCamara);
 
     // El límite de acercamiento (minDistance) se ajusta al radio REAL de la
-    // esfera de este cuerpo específico, con un margen del 5%. Sin esto,
-    // minDistance quedaba fijo en un valor global (0.01) sin relación con
-    // el tamaño de lo que se está mirando: en cuerpos grandes (p. ej. el
-    // Sol en escala exagerada, radio 3) la cámara podía terminar DENTRO de
-    // la esfera antes de llegar al límite, y ahí se ve "recortada" — las
-    // caras internas de la esfera no se renderizan. Con el límite ajustado,
-    // se puede acercar hasta rozar la superficie real, pero nunca cruzarla.
+    // esfera de este cuerpo específico, dejando un colchón chico (2% del
+    // radio) respecto a la SUPERFICIE (minDistance se mide desde el centro,
+    // por eso el +colchón y no solo el radio). Sin esto, minDistance
+    // quedaba fijo en un valor global sin relación con el tamaño de lo que
+    // se está mirando: en cuerpos grandes (p. ej. el Sol en escala
+    // exagerada, radio 3) la cámara podía terminar DENTRO de la esfera
+    // antes de llegar al límite.
     const radioSuperficie = radioVisualDeCuerpo(cuerpo);
-    controls.minDistance = Math.max(radioSuperficie * 1.05, 0.001);
+    const colchonSuperficie = Math.max(radioSuperficie * 0.02, 0.0001);
+    controls.minDistance = radioSuperficie + colchonSuperficie;
+
+    // El "near" plane TIENE que quedar más cerca que el colchón de arriba
+    // (si no, el propio plano de recorte termina dentro de la esfera al
+    // acercar al máximo, cortándola literalmente — el bug real detrás del
+    // "recorte" reportado). Con 0.3 del colchón queda un margen de
+    // seguridad de ~3x respecto al colchón real, sin importar qué tan chico
+    // sea ese colchón.
+    camera.near = Math.max(colchonSuperficie * 0.3, 0.00005);
+    camera.updateProjectionMatrix();
 
     controls.update();
 }
