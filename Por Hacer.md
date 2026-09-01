@@ -8,6 +8,7 @@ Preguntar a Martin Avila por dudas del codigo.
 - **(HECHO)** Agregar Caronte.
 - **(HECHO)** Intensificar sombras.
 - Quitar wireframe de seleccion una vez seleccionado un cuerpo.
+- Retrabajar anillos de jupiter si posible.
 - Unificar modo "exagerado" (el modo de tamaño mas grande y orbitas mas cercanas)
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
 - Implementar controles con teclas (cambiar de planeta seleccionado, alternar interfaz, etc) y mostrarlos en pantalla.
