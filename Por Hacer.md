@@ -6,7 +6,8 @@ Preguntar a Martin Avila por dudas del codigo.
 - Reescribir los txt de informacion en /static/resources.
 - **(HECHO)** Implementar alternar interfaz.
 - **(HECHO)** Agregar Caronte.
-- Intensificar sombras.
+- **(HECHO)** Intensificar sombras.
+- Quitar wireframe de seleccion una vez seleccionado un cuerpo.
 - Unificar modo "exagerado" (el modo de tamaño mas grande y orbitas mas cercanas)
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
 - Implementar controles con teclas (cambiar de planeta seleccionado, alternar interfaz, etc) y mostrarlos en pantalla.
