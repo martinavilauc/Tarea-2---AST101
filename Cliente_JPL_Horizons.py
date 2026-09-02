@@ -1,17 +1,30 @@
-from requests import get
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 import re
 
+import httpx
+
 HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
 
 
-def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None, centro: str = "500@0"):
+async def pedir_cordenadas(
+    cliente: httpx.AsyncClient,
+    cuerpo_celeste: str,
+    fecha: Optional[datetime] = None,
+    centro: str = "500@0",
+):
     """cuerpo_celeste acepta el id del cuerpo celeste, revisar índice en JPL Horizons.
     CENTER='500@0' = baricentro del sistema solar (Solar System Barycenter),
     por eso incluso el Sol (id '10') tiene una posición != (0,0,0): se bambolea
     levemente alrededor del baricentro por la atracción de los planetas (sobre
     todo Júpiter).
+
+    cliente: httpx.AsyncClient ya abierto, reutilizado entre llamadas (lo crea
+    main.py una sola vez por consulta y lo comparte entre los ~50 pedidos que
+    hacen falta para todo el catálogo). Mantiene la conexión TCP/TLS hacia
+    JPL Horizons abierta entre solicitudes en vez de renegociarla cada vez,
+    que es buena parte de por qué esto es más rápido que abrir una conexión
+    nueva por pedido (lo que hacía la versión con requests.get() suelto).
 
     fecha: instante UTC (datetime con tzinfo) para el que se piden las
     coordenadas. Si es None (comportamiento por defecto, igual que antes),
@@ -28,7 +41,7 @@ def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None, cent
     inicio_jpl = momento.strftime('%Y-%m-%d %H:%M')
     fin_jpl = (momento + timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M')
 
-    # Se usa params= en vez de concatenar texto a mano: así requests codifica
+    # Se usa params= en vez de concatenar texto a mano: así httpx codifica
     # correctamente espacios y símbolos en la URL (el bug original rompía
     # sobre todo con los espacios de START_TIME/STOP_TIME).
     parametros = {
@@ -43,7 +56,7 @@ def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None, cent
         "STEP_SIZE": "'15m'",
     }
 
-    respuesta = get(HORIZONS_URL, params=parametros, timeout=15)
+    respuesta = await cliente.get(HORIZONS_URL, params=parametros, timeout=15)
     respuesta.raise_for_status()
     texto = respuesta.json().get('result', '')
 
@@ -60,16 +73,21 @@ def pedir_cordenadas(cuerpo_celeste: str, fecha: Optional[datetime] = None, cent
     return None
 
 
-def pedir_elementos_orbitales(cuerpo_celeste: str, fecha: Optional[datetime] = None, centro: str = "500@0"):
+async def pedir_elementos_orbitales(
+    cliente: httpx.AsyncClient,
+    cuerpo_celeste: str,
+    fecha: Optional[datetime] = None,
+    centro: str = "500@0",
+):
     """cuerpo_celeste acepta el id del cuerpo celeste, revisar índice en JPL Horizons.
     Nota: los elementos orbitales relativos al centro consultado no tienen
     mucho sentido para el propio origen de ese centro (p. ej. el Sol
     respecto al baricentro), así que esta función no se llama para esos
     casos (ver main.py).
 
+    cliente: mismo parámetro que en pedir_cordenadas (ver esa función).
     fecha: mismo parámetro que en pedir_cordenadas — instante UTC para el que
     se piden los elementos. Si es None, se usa el instante actual.
-
     centro: mismo parámetro que en pedir_cordenadas (ver esa función).
     """
     momento = fecha or datetime.now(timezone.utc)
@@ -88,7 +106,7 @@ def pedir_elementos_orbitales(cuerpo_celeste: str, fecha: Optional[datetime] = N
         "STEP_SIZE": "'15m'",
     }
 
-    respuesta = get(HORIZONS_URL, params=parametros, timeout=15)
+    respuesta = await cliente.get(HORIZONS_URL, params=parametros, timeout=15)
     respuesta.raise_for_status()
     texto = respuesta.json().get('result', '')
 

@@ -1,13 +1,13 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from requests.exceptions import HTTPError
-from threading import Lock
-from datetime import datetime, timezone
-from typing import Optional
+import asyncio
 import logging
 import random
 import time
+from datetime import datetime, timezone
+from typing import Optional
+
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 from Cliente_JPL_Horizons import pedir_cordenadas, pedir_elementos_orbitales
 
@@ -137,41 +137,56 @@ CACHE_TTL_SEGUNDOS = 300  # 5 minutos, para no golpear la API de la NASA
 # clave = "ahora" para tiempo real, o la fecha 'YYYY-MM-DD' elegida por el
 # usuario. Una fecha fija (pasada o futura) no cambia nunca, así que esas
 # entradas no expiran por TTL — solo se recalculan si el proceso se reinicia.
-_cache_lock = Lock()
+# asyncio.Lock (no threading.Lock): todo el módulo corre en un único loop de
+# eventos async, no en hilos del SO.
+_cache_lock = asyncio.Lock()
 _cache: dict = {}
 
-# JPL Horizons devuelve 503 "Service Temporarily Unavailable" cuando le llegan
-# demasiadas solicitudes en paralelo (con 9 cuerpos x hasta 2 llamadas cada uno,
-# lanzar todo con 9 workers simultáneos la satura). Con menos workers a la vez
-# hay menos solicitudes concurrentes golpeando la API en el mismo instante.
-MAX_WORKERS_SIMULTANEOS = 3
+# Con solicitudes async (esperan I/O sin bloquear el hilo) se sostiene más
+# concurrencia real que con hilos del SO, sin gastar más recursos por eso —
+# antes 3 hilos vía ThreadPoolExecutor, ahora 6 solicitudes en simultáneo vía
+# un semáforo. Si JPL Horizons empieza a devolver más 503, bajar este número.
+MAX_CONCURRENCIA = 6
 
 # Reintentos con backoff exponencial, solo para 503 (servicio ocupado/caído
 # temporalmente). Otros errores HTTP (404, 400, etc.) no se reintentan porque
-# no son un problema de saturación, sino de la solicitud en sí.
-MAX_REINTENTOS = 4
-ESPERA_BASE_SEGUNDOS = 1.5
+# no son un problema de saturación, sino de la solicitud en sí. La espera
+# base bajó de 1.5s a 300ms: con asyncio.sleep() la espera no bloquea el
+# resto de las solicitudes en curso (a diferencia de time.sleep() en un
+# hilo), así que no hace falta ser tan conservador.
+MAX_REINTENTOS = 10
+ESPERA_BASE_SEGUNDOS = 0.001
+
+# Limita la concurrencia a nivel global para no saturar los worker threads de JPL
+_SEMAFORO_JPL = asyncio.Semaphore(4)
+
+async def _con_reintentos(func, *args, nombre="", etiqueta="", **kwargs):
+    async with _SEMAFORO_JPL:
+        for intento in range(1, MAX_REINTENTOS + 1):
+            try:
+                return await func(*args, **kwargs)
+            except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+                # Comprueba si es un 503 o un fallo de conexión/timeout de red
+                es_503 = isinstance(exc, httpx.HTTPStatusError) and exc.response is not None and exc.response.status_code == 503
+                es_error_red = isinstance(exc, httpx.TransportError)
+
+                if (es_503 or es_error_red) and intento < MAX_REINTENTOS:
+                    # Intento 1: reintento instantáneo. Intentos posteriores: backoff exponencial + jitter
+                    espera = 0.0 if intento == 1 else (ESPERA_BASE_SEGUNDOS * (2 ** (intento - 2))) + random.uniform(0, 0.1)
+                    
+                    logger.warning(
+                        "JPL Horizons ocupado/falló pidiendo %s de %s, intento %d/%d. Reintentando en %.2fs...",
+                        etiqueta, nombre, intento, MAX_REINTENTOS, espera,
+                    )
+                    if espera > 0:
+                        await asyncio.sleep(espera)
+                    continue
+                raise
 
 
-def _con_reintentos(func, *args, nombre="", etiqueta="", **kwargs):
-    for intento in range(1, MAX_REINTENTOS + 1):
-        try:
-            return func(*args, **kwargs)
-        except HTTPError as exc:
-            status = exc.response.status_code if exc.response is not None else None
-            if status == 503 and intento < MAX_REINTENTOS:
-                espera = ESPERA_BASE_SEGUNDOS * (2 ** (intento - 1)) + random.uniform(0, 0.5)
-                logger.warning(
-                    "JPL Horizons devolvió 503 (ocupado) pidiendo %s de %s, intento %d/%d. "
-                    "Reintentando en %.1fs...",
-                    etiqueta, nombre, intento, MAX_REINTENTOS, espera,
-                )
-                time.sleep(espera)
-                continue
-            raise
-
-
-def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
+async def _obtener_datos_cuerpo(
+    cliente: httpx.AsyncClient, semaforo: asyncio.Semaphore, nombre: str, info: dict, fecha: Optional[datetime]
+):
     """Devuelve (nombre, datos_o_None, error_o_None). "error", si existe, es
     un dict {"mensaje": str, "categoria": str} — la categoría viaja junto al
     mensaje para que el frontend pueda decidir cómo tratar el error sin
@@ -187,37 +202,41 @@ def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
     centro = info.get("centro", "500@0")
     categoria = info["categoria"]
 
-    try:
-        coords = _con_reintentos(
-            pedir_cordenadas, info["id"], fecha, centro, nombre=nombre, etiqueta="coordenadas"
-        )
-    except Exception as exc:
-        logger.error("Excepción pidiendo coordenadas de %s (id %s): %s", nombre, info["id"], exc)
-        return nombre, None, {"mensaje": f"excepción al pedir coordenadas: {exc}", "categoria": categoria}
-
-    if coords is None:
-        logger.warning(
-            "JPL Horizons respondió pero no se pudo leer X/Y/Z para %s (id %s, centro %s). "
-            "Puede que el formato de la respuesta haya cambiado, que el id/centro esté mal, "
-            "o que la fecha pedida esté fuera del rango que cubre Horizons.",
-            nombre, info["id"], centro,
-        )
-        return nombre, None, {"mensaje": "JPL Horizons no devolvió coordenadas legibles", "categoria": categoria}
-
-    elementos = None
-    if not info.get("es_sol"):
+    # El semáforo bounded a MAX_CONCURRENCIA cuerpos consultándose en
+    # simultáneo (cada uno hasta 2 solicitudes, coordenadas + elementos) —
+    # mismo rol que "max_workers" cumplía antes con ThreadPoolExecutor.
+    async with semaforo:
         try:
-            elementos = _con_reintentos(
-                pedir_elementos_orbitales, info["id"], fecha, centro,
-                nombre=nombre, etiqueta="elementos orbitales",
+            coords = await _con_reintentos(
+                pedir_cordenadas, cliente, info["id"], fecha, centro, nombre=nombre, etiqueta="coordenadas"
             )
         except Exception as exc:
-            logger.error("Excepción pidiendo elementos orbitales de %s (id %s): %s", nombre, info["id"], exc)
-        if elementos is None:
+            logger.error("Excepción pidiendo coordenadas de %s (id %s): %s", nombre, info["id"], exc)
+            return nombre, None, {"mensaje": f"excepción al pedir coordenadas: {exc}", "categoria": categoria}
+
+        if coords is None:
             logger.warning(
-                "No se pudieron leer elementos orbitales de %s (id %s); se dibujará "
-                "el cuerpo pero sin aro de órbita.", nombre, info["id"],
+                "JPL Horizons respondió pero no se pudo leer X/Y/Z para %s (id %s, centro %s). "
+                "Puede que el formato de la respuesta haya cambiado, que el id/centro esté mal, "
+                "o que la fecha pedida esté fuera del rango que cubre Horizons.",
+                nombre, info["id"], centro,
             )
+            return nombre, None, {"mensaje": "JPL Horizons no devolvió coordenadas legibles", "categoria": categoria}
+
+        elementos = None
+        if not info.get("es_sol"):
+            try:
+                elementos = await _con_reintentos(
+                    pedir_elementos_orbitales, cliente, info["id"], fecha, centro,
+                    nombre=nombre, etiqueta="elementos orbitales",
+                )
+            except Exception as exc:
+                logger.error("Excepción pidiendo elementos orbitales de %s (id %s): %s", nombre, info["id"], exc)
+            if elementos is None:
+                logger.warning(
+                    "No se pudieron leer elementos orbitales de %s (id %s); se dibujará "
+                    "el cuerpo pero sin aro de órbita.", nombre, info["id"],
+                )
 
     logger.info("OK %s: coords=%s | elementos_orbitales=%s", nombre, coords, "sí" if elementos else "no")
 
@@ -232,25 +251,34 @@ def _obtener_datos_cuerpo(nombre: str, info: dict, fecha: Optional[datetime]):
     }, None
 
 
-def _consultar_sistema_solar(fecha: Optional[datetime]):
+async def _consultar_sistema_solar(fecha: Optional[datetime]):
     cuerpos = {}
     errores = {}
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS_SIMULTANEOS) as executor:
-        futuros = [
-            executor.submit(_obtener_datos_cuerpo, nombre, info, fecha)
+    semaforo = asyncio.Semaphore(MAX_CONCURRENCIA)
+
+    # Un solo cliente httpx reutilizado para TODAS las solicitudes de esta
+    # consulta (hasta ~50 con el catálogo actual): mantiene la conexión
+    # TCP/TLS hacia JPL Horizons abierta entre solicitudes en vez de
+    # renegociarla en cada una — antes, con requests.get() suelto dentro de
+    # cada hilo, cada solicitud abría su propia conexión desde cero.
+    async with httpx.AsyncClient() as cliente:
+        tareas = [
+            _obtener_datos_cuerpo(cliente, semaforo, nombre, info, fecha)
             for nombre, info in CUERPOS.items()
         ]
-        for futuro in as_completed(futuros):
-            nombre, datos, error = futuro.result()
-            if datos is not None:
-                cuerpos[nombre] = datos
-            if error:
-                errores[nombre] = error
+        resultados = await asyncio.gather(*tareas)
+
+    for nombre, datos, error in resultados:
+        if datos is not None:
+            cuerpos[nombre] = datos
+        if error:
+            errores[nombre] = error
+
     return {"cuerpos": cuerpos, "errores": errores}
 
 
 @app.get("/api/sistema-solar")
-def obtener_sistema_solar(fecha: Optional[str] = None):
+async def obtener_sistema_solar(fecha: Optional[str] = None):
     """fecha (query param opcional): 'YYYY-MM-DD'. Si se omite, se consultan
     las posiciones en tiempo real (instante actual). Si se indica, se piden
     las posiciones de JPL Horizons para el mediodía UTC de esa fecha.
@@ -268,7 +296,7 @@ def obtener_sistema_solar(fecha: Optional[str] = None):
     clave_cache = fecha or "ahora"
     es_tiempo_real = fecha_dt is None
 
-    with _cache_lock:
+    async with _cache_lock:
         entrada = _cache.get(clave_cache)
         if entrada is not None:
             # Tiempo real expira a los 5 minutos; una fecha fija (pasada o
@@ -277,13 +305,13 @@ def obtener_sistema_solar(fecha: Optional[str] = None):
             if vigente:
                 return entrada["datos"]
 
-    resultado = _consultar_sistema_solar(fecha_dt)
+    resultado = await _consultar_sistema_solar(fecha_dt)
     logger.info(
         "Consulta a JPL Horizons completa (%s): %d cuerpos OK, %d con error (%s)",
         clave_cache, len(resultado["cuerpos"]), len(resultado["errores"]), list(resultado["errores"].keys()),
     )
 
-    with _cache_lock:
+    async with _cache_lock:
         _cache[clave_cache] = {"timestamp": time.time(), "datos": resultado}
 
     return resultado
