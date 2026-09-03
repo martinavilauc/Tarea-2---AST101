@@ -26,3 +26,4 @@ Preguntar a Martin Avila por dudas del codigo.
 - Ceres, Pluton, Neptuno y Urano estan fuera del aro de orbita.
 - **(ARREGLADO)** Al quitar o poner orbita (y en general al cambiar settings) la camara se reinicia.
 - **(ARREGLADO)** Al hacer click en el wireframe del planeta ya seleccionado se reinicia la camara.
+- Reducir iluminacion de cuerpo claros.
