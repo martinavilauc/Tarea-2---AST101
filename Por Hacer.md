@@ -8,6 +8,7 @@ Preguntar a Martin Avila por dudas del codigo.
 - **(HECHO)** Agregar Caronte.
 - **(HECHO)** Intensificar sombras.
 - **(HECHO)** Quitar wireframe de seleccion una vez seleccionado un cuerpo.
+- Al seleccionar un cuerpo, la camara debe posicionar de manera que el cuerpo use alrededor de 1/3 de la altura vertical, idealmente de forma que todos los cuerpos aparezcan aproximadamente del mismo tamaño al cambiar entre ellos (almenos desde la vista por defecto).
 - Retrabajar anillos de jupiter si posible.
 - Unificar modo "exagerado" (el modo de tamaño mas grande y orbitas mas cercanas)
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
