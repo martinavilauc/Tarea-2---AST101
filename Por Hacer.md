@@ -7,7 +7,7 @@ Preguntar a Martin Avila por dudas del codigo.
 - **(HECHO)** Implementar alternar interfaz.
 - **(HECHO)** Agregar Caronte.
 - **(HECHO)** Intensificar sombras.
-- Quitar wireframe de seleccion una vez seleccionado un cuerpo.
+- **(HECHO)** Quitar wireframe de seleccion una vez seleccionado un cuerpo.
 - Retrabajar anillos de jupiter si posible.
 - Unificar modo "exagerado" (el modo de tamaño mas grande y orbitas mas cercanas)
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
@@ -22,6 +22,6 @@ Preguntar a Martin Avila por dudas del codigo.
 - **(ARREGLADO)** El selector de fechas se "activa" apenas escribir la fecha (debe activarse al presionar enter).
 - **(ARREGLADO)** Pluton esta fuera del aro de orbita (no es por la cantidad de segmentos del aro).
 - **(ARREGLADO)** Ceres esta pegado al sol.
-- Ceres no tiene elementos orbitales.
+- Ceres, Pluton, Neptuno y Urano estan fuera del aro de orbita.
 - **(ARREGLADO)** Al quitar o poner orbita (y en general al cambiar settings) la camara se reinicia.
 - **(ARREGLADO)** Al hacer click en el wireframe del planeta ya seleccionado se reinicia la camara.
