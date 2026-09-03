@@ -1398,14 +1398,21 @@ function onPointerMoveEscena(event) {
     actualizarMouse(event);
     const cuerpo = cuerpoBajoElMouse();
 
-    if (wireframeActivo && (!cuerpo || cuerpo.wireframe !== wireframeActivo)) {
+    // El wireframe deseado es null si no hay cuerpo bajo el mouse, o si ese
+    // cuerpo es el que ya está seleccionado/enfocado (no se le muestra el
+    // wireframe, aunque sigue siendo clickeable). Comparar contra el
+    // "deseado" en vez de solo contra "hubo cambio de cuerpo" evita que el
+    // wireframe quede encendido de un hover previo si, sin mover el mouse,
+    // ese mismo cuerpo pasa a estar seleccionado (p. ej. justo al clickearlo).
+    const wireframeDeseado = (cuerpo && cuerpo.nombre !== nombreCuerpoEnfocado) ? cuerpo.wireframe : null;
+
+    if (wireframeActivo && wireframeActivo !== wireframeDeseado) {
         wireframeActivo.visible = false;
-        wireframeActivo = null;
     }
-    if (cuerpo) {
-        cuerpo.wireframe.visible = true;
-        wireframeActivo = cuerpo.wireframe;
+    if (wireframeDeseado) {
+        wireframeDeseado.visible = true;
     }
+    wireframeActivo = wireframeDeseado;
 
     renderer.domElement.style.cursor = cuerpo ? 'pointer' : 'default';
 }
@@ -1473,6 +1480,14 @@ let ultimaDistanciaEnfoqueBase = null;
 function centrarCamaraEnCuerpo(cuerpo, preservarZoom = false) {
     const esMismoCuerpoQueAntes = preservarZoom && nombreCuerpoEnfocado === cuerpo.nombre;
     nombreCuerpoEnfocado = cuerpo.nombre;
+    // Si el cuerpo recién seleccionado es el que tenía el wireframe
+    // encendido por un hover previo (p. ej. justo antes de clickearlo), se
+    // apaga de inmediato acá — sin esto quedaría encendido hasta el próximo
+    // pointermove, ya que el evento de click no dispara ese handler.
+    if (wireframeActivo === cuerpo.wireframe) {
+        wireframeActivo.visible = false;
+        wireframeActivo = null;
+    }
     // La memoria de zoom del encuadre "sistema completo" ya no aplica: a
     // partir de acá la cámara se relaciona con la distancia a ESTE cuerpo,
     // no con distanciaVisualMaxima. Si más adelante se vuelve a la vista
