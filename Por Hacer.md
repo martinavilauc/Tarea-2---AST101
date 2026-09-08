@@ -9,15 +9,15 @@ Preguntar a Martin Avila por dudas del codigo.
 - **(HECHO)** Intensificar sombras.
 - **(HECHO)** Quitar wireframe de seleccion una vez seleccionado un cuerpo.
 - Al seleccionar un cuerpo, la camara debe posicionar de manera que el cuerpo use alrededor de 1/3 de la altura vertical, idealmente de forma que todos los cuerpos aparezcan aproximadamente del mismo tamaño al cambiar entre ellos (almenos desde la vista por defecto).
-- Retrabajar anillos de jupiter si posible.
+- Retrabajar anillo de Saturno si posible.
 - Unificar modo "exagerado" (el modo de tamaño mas grande y orbitas mas cercanas)
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
 - Implementar controles con teclas (cambiar de planeta seleccionado, alternar interfaz, etc) y mostrarlos en pantalla.
-- Soporte movil (Pantalla vertical y menus desplegables... falta conceptualizar)(Edge permite "simular" pantalla movil en devtools (menu F12)).
+- **(HECHO)** Soporte movil (Pantalla vertical y menus desplegables que cubren toda la pantalla)(Edge permite "simular" pantalla movil en devtools (menu F12)).
 - **(HECHO)** Implementar Texturas.
 - Implementar modo "misiones" (mostrar misiones en el sistema solar, por ejemplo, el viaje de la voyager hasta salir del sistema solar).
 - **(HECHO)** Optimizar tiempos de carga.
-- Endpoints (Mover diccionarios, importar json, crear archivo de constantes, es decir: importar en main.py y no definir.)
+- Refactorizar main.py (Mover diccionarios, importar json, crear archivo de constantes, es decir: importar en main.py y no definir.)
 # BUGS:
 - No funciona en librewolf.
 - **(ARREGLADO)** El selector de fechas se "activa" apenas escribir la fecha (debe activarse al presionar enter).
