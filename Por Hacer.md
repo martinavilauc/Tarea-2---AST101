@@ -14,6 +14,7 @@ Preguntar a Martin Avila por dudas del codigo.
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
 - Implementar controles con teclas (cambiar de planeta seleccionado, alternar interfaz, etc) y mostrarlos en pantalla.
 - **(HECHO)** Soporte movil (Pantalla vertical y menus desplegables que cubren toda la pantalla)(Edge permite "simular" pantalla movil en devtools (menu F12)).
+- Desactivar wireframes por ajustes y por defecto en modo movil
 - **(HECHO)** Implementar Texturas.
 - Implementar modo "misiones" (mostrar misiones en el sistema solar, por ejemplo, el viaje de la voyager hasta salir del sistema solar).
 - **(HECHO)** Optimizar tiempos de carga.
