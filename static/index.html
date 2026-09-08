@@ -2,10 +2,15 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sistema Solar 3D</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
-        canvas { display: block; }
+        /* touch-action: none evita que el navegador interprete el arrastre/
+           pellizco sobre la escena 3D como scroll o zoom de la página — sin
+           esto, en móvil el gesto de rotar/acercar la cámara (que maneja
+           OrbitControls) compite con los gestos nativos del navegador. */
+        canvas { display: block; touch-action: none; }
 
         #titulo-app {
             position: absolute;
@@ -35,6 +40,8 @@
             z-index: 5;
         }
 
+        /* Botón de índice (menú, esquina superior izquierda — espejo del
+           botón de configuración de la derecha) */
         /* Botón para mostrar/ocultar toda la interfaz superpuesta (título,
            ayuda, botones, paneles) — deja solo la escena 3D visible. Este
            botón NUNCA se oculta a sí mismo, o no habría forma de volver a
@@ -200,26 +207,6 @@
         .panel-lateral .panel-cuerpo {
             padding: 14px 16px;
             overflow-y: auto;
-            /* Firefox */
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255,255,255,0.18) transparent;
-        }
-        /* Chrome/Edge/Safari */
-        .panel-lateral .panel-cuerpo::-webkit-scrollbar {
-            width: 8px;
-        }
-        .panel-lateral .panel-cuerpo::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .panel-lateral .panel-cuerpo::-webkit-scrollbar-thumb {
-            background-color: rgba(255,255,255,0.18);
-            border-radius: 8px;
-            border: 2px solid transparent;
-            background-clip: padding-box;
-        }
-        .panel-lateral .panel-cuerpo::-webkit-scrollbar-thumb:hover {
-            background-color: rgba(255,255,255,0.32);
-            background-clip: padding-box;
         }
         .panel-lateral h3 {
             margin: 16px 0 6px 0;
@@ -369,6 +356,73 @@
             color: #93a1b3;
             margin-top: 6px;
         }
+
+        /* ============================================================
+           Pantallas angostas (celulares). Los ajustes de acá arriba ya
+           funcionan razonablemente en desktop/tablet; esto solo adapta lo
+           que se ve apretado en una pantalla chica: paneles más anchos
+           (usan casi todo el ancho disponible en vez de 300px fijos),
+           objetivos táctiles más grandes (min. ~44px, tamaño recomendado
+           para tocar con el dedo con comodidad), y tipografía un poco más
+           grande para no depender de que el usuario haga zoom manual.
+           ============================================================ */
+        @media (max-width: 640px) {
+            #titulo-app { font-size: 10px; }
+
+            #ayuda {
+                max-width: calc(100vw - 24px);
+                font-size: 12.5px;
+            }
+
+            /* Paneles: ocupan casi todo el ancho de la pantalla en vez de
+               quedar como una tira angosta de 300px pegada a un borde. */
+            .panel-lateral {
+                width: calc(100vw - 24px);
+                top: 58px;
+            }
+
+            .panel-lateral .panel-header h2 { font-size: 16px; }
+            .panel-lateral .panel-cuerpo { font-size: 14px; }
+            .panel-lateral h3 { font-size: 12px; }
+            .panel-lateral table { font-size: 13.5px; }
+
+            /* Botones circulares (índice, configuración, cerrar panel):
+               suben a 44px, el tamaño mínimo recomendado para tocar con el
+               dedo sin errar — antes 38px, quedaban un poco chicos. */
+            #ui-toggle-boton, #indice-boton, #config-boton {
+                width: 44px;
+                height: 44px;
+                font-size: 20px;
+            }
+            .panel-lateral .cerrar {
+                font-size: 24px;
+                padding: 6px 10px;
+            }
+
+            /* Filas del índice (casilla + nombre del cuerpo): más altas y
+               con más espacio entre ellas, para no tocar la fila de al
+               lado por error en una lista larga (27 cuerpos). */
+            .indice-lista li { padding: 6px 0 6px 20px; }
+            .indice-cuerpo-nombre { padding: 8px 6px; font-size: 14px; }
+            .indice-lista input[type="checkbox"],
+            .indice-categoria-header input[type="checkbox"] {
+                width: 18px;
+                height: 18px;
+            }
+
+            /* Config: radios/checkboxes y sus etiquetas, más cómodos de tocar. */
+            #config-panel label {
+                padding: 4px 0;
+                font-size: 14px;
+            }
+            #config-panel input[type="radio"],
+            #config-panel input[type="checkbox"] {
+                width: 18px;
+                height: 18px;
+            }
+            #config-panel input[type="date"] { font-size: 14px; padding: 8px; }
+            #config-panel button.boton-secundario { padding: 8px 12px; font-size: 13px; }
+        }
     </style>
     <!-- Librerías de Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -428,7 +482,7 @@
                 <button class="boton-secundario" id="usar-fecha-actual">Ahora</button>
             </div>
             <div id="fecha-descripcion">(Mostrando posiciones en tiempo real)</div>
-            <div class="descripcion">Presiona "Ir" o Enter para consultar la fecha elegida (no se actualiza automáticamente mientras escribes, para evitar disparar consultas con fechas a medio completar).</div>
+            <div class="descripcion">Presiona "Ir" o Enter para consultar la fecha elegida (no se actualiza automáticamente mientras escribes).</div>
 
             <h3>Escala de distancias</h3>
             <label>
