@@ -1,56 +1,57 @@
-Marte:
-https://images.nasa.gov/details/PIA03276
-
-Tierra:
-https://images.nasa.gov/details/a-sky-view-of-earth-from-suomi-npp_16611703184_o
-
-Venus:
-https://images.nasa.gov/details/PIA23791
-
-Mercurio:
-https://images.nasa.gov/details/PIA11245
-
-Sol:
-https://images.nasa.gov/details/GSFC_20171208_Archive_e001435
-
 Neptuno:
-https://images.nasa.gov/details/PIA01492
-
-Urano:
-https://images.nasa.gov/details/PIA18182
-
-Saturno:
-https://images.nasa.gov/details/PIA02225
-
-Jupiter:
-https://images.nasa.gov/details/PIA00343
+https://science.nasa.gov/3d-resources/neptune/
 
 Pluton:
-https://images.nasa.gov/details/PIA19952
+https://science.nasa.gov/3d-resources/pluto/
 
-Luna:
-https://images.nasa.gov/details/PIA00130
+Saturno:
+https://science.nasa.gov/3d-resources/saturn/
 
 Deimos:
-https://images.nasa.gov/details/PIA11826
+https://science.nasa.gov/3d-resources/mars-deimos/
 
 Fobos:
-https://images.nasa.gov/details/PIA10368
+https://science.nasa.gov/3d-resources/mars-phobos/
 
-Io:
-https://images.nasa.gov/details/PIA01667
+Marte:
+https://science.nasa.gov/3d-resources/mars/
+
+Jupiter:
+https://science.nasa.gov/3d-resources/jupiter/
 
 Europa:
-https://images.nasa.gov/details/PIA26331
+https://science.nasa.gov/3d-resources/jupiter-europa/
 
 Ganimedes:
-https://images.nasa.gov/details/PIA01666
+https://science.nasa.gov/3d-resources/jupiter-ganymede/
 
-Calisto:
-https://images.nasa.gov/details/PIA00362
+Io:
+https://science.nasa.gov/3d-resources/jupiter-io-b/
+
+Encelado:
+https://science.nasa.gov/3d-resources/jupiter-io-b/
 
 Titan:
-https://images.nasa.gov/details/PIA08736
+https://science.nasa.gov/3d-resources/saturn-titan/
 
-Spacecrafts: (Ventana 3D)
-https://science.nasa.gov/mission/parker-solar-probe/
+Tierra:
+https://svs.gsfc.nasa.gov/3615/
+
+Mercurio:
+https://science.nasa.gov/resource/enhanced-color-mercury-map/
+
+Luna:
+https://svs.gsfc.nasa.gov/4720
+
+Sol:
+https://svs.gsfc.nasa.gov/30362
+
+Fondo Estelar:
+https://science.nasa.gov/3d-resources/tycho-star-map/
+
+Venus, Urano, Triton, Jupiter, Calisto, Caronte y Ceres:
+Generadas por Gemini.
+
+
+
+

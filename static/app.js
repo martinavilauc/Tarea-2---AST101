@@ -1418,43 +1418,69 @@ function onPointerMoveEscena(event) {
 }
 renderer.domElement.addEventListener('pointermove', onPointerMoveEscena);
 
-// Distancia de acercamiento para centrarCamaraEnCuerpo: normalmente 9 veces
-// el radio del hitbox, pero si el cuerpo clickeado tiene lunas propias (p.
-// ej. Júpiter), se amplía para que también entren en el encuadre — si no,
-// quedarían fuera de cámara pese a estar visibles en la escena.
+// Fracción de la ALTURA de pantalla que debe ocupar el cuerpo enfocado
+// (pensado para una pantalla de PC de 1920x1080, aunque el cálculo en sí NO
+// depende de la resolución real: el FOV vertical de la cámara three.js es
+// fijo sin importar el tamaño de la ventana/aspecto, así que la distancia
+// necesaria para una fracción de altura dada es la misma en cualquier
+// resolución — 1920x1080 es solo el marco de referencia mental, no una
+// entrada de la fórmula).
+const FRACCION_ALTURA_ENFOQUE = 1 / 3;
+
+// Distancia a la que hay que poner la cámara para que una esfera de radio
+// "radio" (en unidades de escena) ocupe exactamente "fraccionAltura" de la
+// altura de pantalla, dado el FOV vertical actual de la cámara.
+//
+// Geometría de la proyección en perspectiva: a distancia D del objetivo, la
+// altura visible del frustum (lo que entra en pantalla verticalmente) es
+//   alturaFrustum = 2 · D · tan(FOV/2)
+// El cuerpo, de diámetro 2·radio, ocupa esa fracción de la altura cuando
+//   (2·radio) / alturaFrustum = fraccionAltura
+// Despejando D:
+//   D = radio / (fraccionAltura · tan(FOV/2))
+//
+// Es completamente genérica: solo usa el radio del cuerpo (real o
+// exagerado, lo que corresponda según el modo activo) y el FOV de la
+// cámara — sirve igual para el Sol, un planeta, una luna o un satélite,
+// sin ningún caso especial por cuerpo.
+function distanciaParaFraccionAltura(radio, fraccionAltura) {
+    const mitadFovRad = THREE.MathUtils.degToRad(camera.fov / 2);
+    return radio / (fraccionAltura * Math.tan(mitadFovRad));
+}
+
+// Distancia de acercamiento para centrarCamaraEnCuerpo: el cuerpo ocupa 1/3
+// de la altura de pantalla (ver distanciaParaFraccionAltura), salvo que
+// tenga lunas propias (p. ej. Júpiter) — en ese caso se amplía para que
+// también entren en el encuadre, si no quedarían fuera de cámara pese a
+// estar visibles en la escena.
 function distanciaEnfoque(cuerpo) {
-    const radioHitbox = cuerpo.meshRaycast.geometry.parameters.radius;
-    const radioVisual = radioVisualDeCuerpo(cuerpo);
-    let distanciaMaxLuna = 0;
+    // Las naves espaciales/sondas ("satelite") son objetos de metros: su
+    // radio real es prácticamente cero, así que aplicarles la regla de
+    // "1/3 de la altura de pantalla" con ese radio daría una distancia
+    // absurdamente chica (inútil en la práctica, y con riesgo de
+    // problemas de precisión). Para ellas se usa el radio de su propio
+    // hitbox como referencia de tamaño — ya tiene un piso mínimo pensado
+    // para que sean seleccionables/visibles, así que da una distancia
+    // razonable en vez de una degenerada. Para todo lo demás (Sol,
+    // planetas, lunas) se sigue usando el radio visual real.
+    //
+    // A propósito, la distancia depende SOLO del radio del propio cuerpo
+    // enfocado — sin excepción para cuerpos con lunas propias (antes se
+    // ampliaba la distancia para que las lunas también entraran en el
+    // encuadre, pero eso rompía la regla: el planeta terminaba viéndose
+    // más chico que 1/3 de pantalla). Todos los cuerpos siguen exactamente
+    // la misma lógica.
+    const esNave = cuerpo.datos && cuerpo.datos.categoria === 'satelite';
+    const radioParaEncuadre = esNave
+        ? cuerpo.meshRaycast.geometry.parameters.radius
+        : radioVisualDeCuerpo(cuerpo);
 
-    if (ultimosCuerpos) {
-        Object.keys(ultimosCuerpos).forEach(otroNombre => {
-            const otroDatos = ultimosCuerpos[otroNombre];
-            if (otroDatos.cuerpo_padre === cuerpo.nombre && posicionesPorNombre.has(otroNombre)) {
-                const distancia = posicionesPorNombre.get(otroNombre).distanceTo(cuerpo.meshRaycast.position);
-                distanciaMaxLuna = Math.max(distanciaMaxLuna, distancia);
-            }
-        });
-    }
+    const distanciaPorAltura = distanciaParaFraccionAltura(radioParaEncuadre, FRACCION_ALTURA_ENFOQUE);
 
-    // La distancia principal se basa en el radio VISUAL real de la esfera
-    // (no en el del hitbox — desde que el hitbox pasó a ser proporcional al
-    // radio visual con distintos factores según categoría/modo, ya no era
-    // un buen indicador de "qué tan grande se ve el cuerpo en pantalla", y
-    // la cámara terminaba quedando demasiado lejos como para distinguir la
-    // esfera con claridad). 4x el radio deja la esfera ocupando una buena
-    // parte de la pantalla sin llegar a recortarse.
-    const distanciaPorRadioVisual = radioVisual * 4;
-    // Salvaguarda: nunca menos que un par de veces el hitbox, para cuerpos
-    // donde el hitbox termina siendo más grande que el radio visual.
-    const distanciaMinimaHitbox = radioHitbox * 2;
-
-    // El piso absoluto es chico a propósito (no 1.2 como antes): ese valor
-    // dominaba por completo en escala real, dejando la cámara igual de
-    // lejos sin importar el cuerpo — la protección real contra quedar
-    // pegado/adentro de la esfera ya la da controls.minDistance, calculado
-    // aparte en centrarCamaraEnCuerpo.
-    return Math.max(distanciaPorRadioVisual, distanciaMinimaHitbox, distanciaMaxLuna * 1.4, 0.01);
+    // El piso absoluto es puramente técnico (evitar 0/negativo si algo sale
+    // mal), NO una protección contra recortes — esa la da controls.minDistance
+    // por separado en centrarCamaraEnCuerpo.
+    return Math.max(distanciaPorAltura, 0.00001);
 }
 
 // Radio visual REAL de la esfera de un cuerpo (no el del hitbox, que puede
