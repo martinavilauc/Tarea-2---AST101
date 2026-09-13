@@ -94,6 +94,12 @@ let modoEscala = 'real'; // 'real' | 'exagerada'
 // mostrar/ocultar el cuerpo en sí, ver el índice). Por defecto se muestran.
 let mostrarOrbitas = true;
 
+// Mostrar/ocultar el wireframe que se enciende al pasar el mouse sobre un
+// cuerpo. Al desactivarlo, el cuerpo sigue siendo clickeable/seleccionable
+// igual (el cursor sigue cambiando a "pointer"), solo deja de encenderse el
+// aro wireframe — no afecta la zona de click en sí.
+let mostrarWireframes = true;
+
 function escalarDistancia(distanciaKm) {
     if (modoEscala === 'real') {
         return distanciaKm / KM_POR_UNIDAD_REAL;
@@ -1115,6 +1121,17 @@ document.getElementById('input-mostrar-orbitas').addEventListener('change', (eve
     reconstruirConEscalaActual();
 });
 
+document.getElementById('input-mostrar-wireframes').addEventListener('change', (evento) => {
+    mostrarWireframes = evento.target.checked;
+    // Si se desactiva mientras un wireframe está encendido (de un hover
+    // previo), se apaga de inmediato — sin esto quedaría visible hasta el
+    // próximo pointermove, ya que este cambio no dispara ese evento.
+    if (!mostrarWireframes && wireframeActivo) {
+        wireframeActivo.visible = false;
+        wireframeActivo = null;
+    }
+});
+
 // Selector de fecha: a propósito NO se dispara con el evento "change" del
 // input nativo — al escribir la fecha a mano (en vez de usar el calendario
 // desplegable), "change" puede disparar con cada segmento que se completa
@@ -1398,13 +1415,18 @@ function onPointerMoveEscena(event) {
     actualizarMouse(event);
     const cuerpo = cuerpoBajoElMouse();
 
-    // El wireframe deseado es null si no hay cuerpo bajo el mouse, o si ese
+    // El wireframe deseado es null si no hay cuerpo bajo el mouse, si ese
     // cuerpo es el que ya está seleccionado/enfocado (no se le muestra el
-    // wireframe, aunque sigue siendo clickeable). Comparar contra el
-    // "deseado" en vez de solo contra "hubo cambio de cuerpo" evita que el
-    // wireframe quede encendido de un hover previo si, sin mover el mouse,
-    // ese mismo cuerpo pasa a estar seleccionado (p. ej. justo al clickearlo).
-    const wireframeDeseado = (cuerpo && cuerpo.nombre !== nombreCuerpoEnfocado) ? cuerpo.wireframe : null;
+    // wireframe, aunque sigue siendo clickeable), o si el usuario desactivó
+    // los wireframes desde configuración (mostrarWireframes) — en ese caso
+    // el cuerpo sigue siendo clickeable/seleccionable igual, solo no se
+    // enciende ningún aro. Comparar contra el "deseado" en vez de solo
+    // contra "hubo cambio de cuerpo" evita que el wireframe quede encendido
+    // de un hover previo si, sin mover el mouse, ese mismo cuerpo pasa a
+    // estar seleccionado (p. ej. justo al clickearlo).
+    const wireframeDeseado = (mostrarWireframes && cuerpo && cuerpo.nombre !== nombreCuerpoEnfocado)
+        ? cuerpo.wireframe
+        : null;
 
     if (wireframeActivo && wireframeActivo !== wireframeDeseado) {
         wireframeActivo.visible = false;

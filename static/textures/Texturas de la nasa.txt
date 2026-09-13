@@ -1,57 +1,56 @@
-Neptuno:
-https://science.nasa.gov/3d-resources/neptune/
-
-Pluton:
-https://science.nasa.gov/3d-resources/pluto/
-
-Saturno:
-https://science.nasa.gov/3d-resources/saturn/
-
-Deimos:
-https://science.nasa.gov/3d-resources/mars-deimos/
-
-Fobos:
-https://science.nasa.gov/3d-resources/mars-phobos/
-
 Marte:
-https://science.nasa.gov/3d-resources/mars/
-
-Jupiter:
-https://science.nasa.gov/3d-resources/jupiter/
-
-Europa:
-https://science.nasa.gov/3d-resources/jupiter-europa/
-
-Ganimedes:
-https://science.nasa.gov/3d-resources/jupiter-ganymede/
-
-Io:
-https://science.nasa.gov/3d-resources/jupiter-io-b/
-
-Encelado:
-https://science.nasa.gov/3d-resources/jupiter-io-b/
-
-Titan:
-https://science.nasa.gov/3d-resources/saturn-titan/
+https://images.nasa.gov/details/PIA03276
 
 Tierra:
-https://svs.gsfc.nasa.gov/3615/
+https://images.nasa.gov/details/a-sky-view-of-earth-from-suomi-npp_16611703184_o
+
+Venus:
+https://images.nasa.gov/details/PIA23791
 
 Mercurio:
-https://science.nasa.gov/resource/enhanced-color-mercury-map/
-
-Luna:
-https://svs.gsfc.nasa.gov/4720
+https://images.nasa.gov/details/PIA11245
 
 Sol:
-https://svs.gsfc.nasa.gov/30362
+https://images.nasa.gov/details/GSFC_20171208_Archive_e001435
 
-Fondo Estelar:
-https://science.nasa.gov/3d-resources/tycho-star-map/
+Neptuno:
+https://images.nasa.gov/details/PIA01492
 
-Venus, Urano, Triton, Jupiter, Calisto, Caronte y Ceres:
-Generadas por Gemini.
+Urano:
+https://images.nasa.gov/details/PIA18182
 
+Saturno:
+https://images.nasa.gov/details/PIA02225
 
+Jupiter:
+https://images.nasa.gov/details/PIA00343
 
+Pluton:
+https://images.nasa.gov/details/PIA19952
 
+Luna:
+https://images.nasa.gov/details/PIA00130
+
+Deimos:
+https://images.nasa.gov/details/PIA11826
+
+Fobos:
+https://images.nasa.gov/details/PIA10368
+
+Io:
+https://images.nasa.gov/details/PIA01667
+
+Europa:
+https://images.nasa.gov/details/PIA26331
+
+Ganimedes:
+https://images.nasa.gov/details/PIA01666
+
+Calisto:
+https://images.nasa.gov/details/PIA00362
+
+Titan:
+https://images.nasa.gov/details/PIA08736
+
+Spacecrafts: (Ventana 3D)
+https://science.nasa.gov/mission/parker-solar-probe/
