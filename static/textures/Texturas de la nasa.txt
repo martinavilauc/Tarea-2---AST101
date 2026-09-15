@@ -2,7 +2,7 @@ Marte:
 https://images.nasa.gov/details/PIA03276
 
 Tierra:
-https://images.nasa.gov/details/a-sky-view-of-earth-from-suomi-npp_16611703184_o
+https://svs.gsfc.nasa.gov/3615/
 
 Venus:
 https://images.nasa.gov/details/PIA23791
@@ -54,3 +54,6 @@ https://images.nasa.gov/details/PIA08736
 
 Spacecrafts: (Ventana 3D)
 https://science.nasa.gov/mission/parker-solar-probe/
+
+Venus, Jupiter, Neptuno, Io, Ganimedes, Calisto y Caronte:
+Generadas por Inteligencia Artificial utilizando de referencia las imágenes de resources.

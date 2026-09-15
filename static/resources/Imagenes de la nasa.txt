@@ -52,5 +52,14 @@ https://images.nasa.gov/details/PIA00362
 Titan:
 https://images.nasa.gov/details/PIA08736
 
+Ceres:
+https://images.nasa.gov/details/PIA21079
+
+Encelado:
+https://images.nasa.gov/details/JPL-2015_10_28-PIA17202
+
+Triton: (editado en Gemini)
+https://images.nasa.gov/details/PIA01536
+
 Spacecrafts: (Ventana 3D)
 https://science.nasa.gov/mission/parker-solar-probe/
