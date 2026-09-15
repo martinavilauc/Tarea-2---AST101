@@ -1077,9 +1077,26 @@ const botonConfig = document.getElementById('config-boton');
 const elPanelConfig = document.getElementById('config-panel');
 
 function abrirPanel(panel) {
-    [elPanelConfig, elPanelInfo].forEach(p => {
-        p.style.display = (p === panel) ? 'flex' : 'none';
-    });
+    if (esPantallaMobil()) {
+        // En pantallas chicas, los tres paneles (índice, configuración,
+        // información) son mutuamente excluyentes — abrir uno cierra los
+        // otros dos, para no superponerlos en un espacio angosto.
+        [elPanelIndice, elPanelConfig, elPanelInfo].forEach(p => {
+            p.style.display = (p === panel) ? 'flex' : 'none';
+        });
+    } else {
+        // En desktop, el índice es independiente (a la izquierda) de
+        // config/info (a la derecha) — abrirlo no debe tocar el estado de
+        // los otros dos. Config e info sí siguen siendo mutuamente
+        // excluyentes entre sí.
+        if (panel === elPanelIndice) {
+            panel.style.display = 'flex';
+        } else {
+            [elPanelConfig, elPanelInfo].forEach(p => {
+                p.style.display = (p === panel) ? 'flex' : 'none';
+            });
+        }
+    }
 }
 
 function cerrarPaneles() {
@@ -1362,12 +1379,14 @@ function seleccionarDesdeIndice(nombre) {
 }
 
 // El índice es un panel independiente (a la izquierda) de config/info (a la
-// derecha): no participa del "un panel abierto a la vez" de abrirPanel().
+// derecha) SOLO en desktop — en pantallas chicas, abrirPanel() los hace
+// mutuamente excluyentes a los tres (ver esa función).
 const botonIndice = document.getElementById('indice-boton');
 const elPanelIndice = document.getElementById('indice-panel');
 
 botonIndice.addEventListener('click', () => {
-    elPanelIndice.style.display = (elPanelIndice.style.display === 'flex') ? 'none' : 'flex';
+    const yaAbierto = elPanelIndice.style.display === 'flex';
+    yaAbierto ? (elPanelIndice.style.display = 'none') : abrirPanel(elPanelIndice);
 });
 document.getElementById('cerrar-indice').addEventListener('click', () => {
     elPanelIndice.style.display = 'none';
@@ -1411,20 +1430,32 @@ function cuerpoBajoElMouse() {
     return cuerposInteractivos.find(c => c.meshRaycast === intersecciones[0].object) || null;
 }
 
+// Mismo umbral que la media query CSS (@media max-width: 640px) usada para
+// el diseño responsivo — se re-evalúa en cada pointermove, así que se
+// adapta solo si la ventana cruza el umbral (redimensionar, rotar el
+// celular) sin necesitar un listener de resize aparte.
+function esPantallaMobil() {
+    return window.matchMedia('(max-width: 640px)').matches;
+}
+
 function onPointerMoveEscena(event) {
     actualizarMouse(event);
     const cuerpo = cuerpoBajoElMouse();
 
     // El wireframe deseado es null si no hay cuerpo bajo el mouse, si ese
     // cuerpo es el que ya está seleccionado/enfocado (no se le muestra el
-    // wireframe, aunque sigue siendo clickeable), o si el usuario desactivó
-    // los wireframes desde configuración (mostrarWireframes) — en ese caso
-    // el cuerpo sigue siendo clickeable/seleccionable igual, solo no se
-    // enciende ningún aro. Comparar contra el "deseado" en vez de solo
-    // contra "hubo cambio de cuerpo" evita que el wireframe quede encendido
-    // de un hover previo si, sin mover el mouse, ese mismo cuerpo pasa a
-    // estar seleccionado (p. ej. justo al clickearlo).
-    const wireframeDeseado = (mostrarWireframes && cuerpo && cuerpo.nombre !== nombreCuerpoEnfocado)
+    // wireframe, aunque sigue siendo clickeable), si el usuario desactivó
+    // los wireframes desde configuración (mostrarWireframes), o si la
+    // pantalla está en modo móvil (ahí no existe un "hover" real — el
+    // wireframe puede quedar pegado o comportarse raro con gestos táctiles,
+    // así que se suprime directamente, sin importar el checkbox de
+    // configuración). En todos esos casos el cuerpo sigue siendo
+    // clickeable/seleccionable igual, solo no se enciende ningún aro.
+    // Comparar contra el "deseado" en vez de solo contra "hubo cambio de
+    // cuerpo" evita que el wireframe quede encendido de un hover previo si,
+    // sin mover el mouse, ese mismo cuerpo pasa a estar seleccionado (p.
+    // ej. justo al clickearlo).
+    const wireframeDeseado = (mostrarWireframes && !esPantallaMobil() && cuerpo && cuerpo.nombre !== nombreCuerpoEnfocado)
         ? cuerpo.wireframe
         : null;
 
@@ -1620,4 +1651,12 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Si el resize cruza al modo móvil mientras un wireframe ya estaba
+    // encendido (de un hover previo en desktop), se apaga de inmediato —
+    // si no, quedaría visible hasta el próximo pointermove.
+    if (esPantallaMobil() && wireframeActivo) {
+        wireframeActivo.visible = false;
+        wireframeActivo = null;
+    }
 });
