@@ -1,0 +1,49 @@
+# Sistema JPL Horizons
+Este proyecto utiliza el sistema de efemérides JPL Horizons, desarrollado y mantenido por el Solar System Dynamics Group del Jet Propulsion Laboratory (JPL) de la NASA.
+# Imagenes:
+- Sol: https://images.nasa.gov/details/GSFC_20171208_Archive_e001435
+- Mercurio: https://images.nasa.gov/details/PIA11245
+- Venus: https://images.nasa.gov/details/PIA23791
+- Tierra: https://images.nasa.gov/details/a-sky-view-of-earth-from-suomi-npp_16611703184_o
+- Marte: https://images.nasa.gov/details/PIA03276
+- Ceres: https://images.nasa.gov/details/PIA21079
+- Júpiter: https://images.nasa.gov/details/PIA00343
+- Saturno: https://images.nasa.gov/details/PIA02225
+- Urano: https://images.nasa.gov/details/PIA18182
+- Neptuno: https://images.nasa.gov/details/PIA01492
+- Plutón: https://images.nasa.gov/details/PIA19952
+- Luna: https://images.nasa.gov/details/PIA00130
+- Fobos: https://images.nasa.gov/details/PIA10368
+- Deimos: https://images.nasa.gov/details/PIA11826
+- Io: https://images.nasa.gov/details/PIA01667
+- Europa: https://images.nasa.gov/details/PIA26331
+- Ganimedes: https://images.nasa.gov/details/PIA01666
+- Calisto: https://images.nasa.gov/details/PIA00362
+- Encélado: https://images.nasa.gov/details/JPL-2015_10_28-PIA17202
+- Titán: https://images.nasa.gov/details/PIA08736
+- Tritón: https://images.nasa.gov/details/PIA01536
+- Caronte: https://images.nasa.gov/details/PIA19968
+- Sondas (Mapa 3D): https://science.nasa.gov/mission/parker-solar-probe/
+# Texturas (Color editado):
+- Sol: https://svs.gsfc.nasa.gov/30362
+- Mercurio: https://science.nasa.gov/resource/enhanced-color-mercury-map/
+- Venus: *Generado por Inteligencia Artificial*
+- Tierra: https://svs.gsfc.nasa.gov/3615/
+- Marte: https://science.nasa.gov/3d-resources/mars/
+- Ceres: *Generado por Inteligencia Artificial*
+- Júpiter: *Generado por Inteligencia Artificial*
+- Saturno: https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_2k_saturn.jpg
+- Urano: *Generado por Inteligencia Artificial*
+- Neptuno: *Generado por Inteligencia Artificial*
+- Plutón: https://space.jpl.nasa.gov/tmaps/pluto.html
+- Luna: https://svs.gsfc.nasa.gov/4720/
+- Fobos: https://svs.gsfc.nasa.gov/4720/
+- Deimos: https://science.nasa.gov/3d-resources/mars-deimos/
+- Io: *Generado por Inteligencia Artificial*
+- Europa: https://science.nasa.gov/3d-resources/jupiter-europa/
+- Ganimedes: *Generado por Inteligencia Artificial*
+- Calisto: *Generado por Inteligencia Artificial*
+- Encélado: https://science.nasa.gov/photojournal/color-maps-of-enceladus-2014/
+- Titán: *Generado por Inteligencia Artificial*
+- Tritón: *Generado por Inteligencia Artificial*
+- Caronte: *Generado por Inteligencia Artificial*
