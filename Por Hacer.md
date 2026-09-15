@@ -9,6 +9,7 @@ Preguntar a Martin Avila por dudas del codigo.
 - **(HECHO)** Intensificar sombras.
 - **(HECHO)** Quitar wireframe de seleccion una vez seleccionado un cuerpo.
 - **(HECHO)** Al seleccionar un cuerpo, la camara debe posicionar de manera que el cuerpo use alrededor de 1/3 de la altura vertical.
+- Añadir fondo estelar.
 - Retrabajar anillo de Saturno si posible.
 - Unificar modo "exagerado" (el modo de tamaño mas grande y orbitas mas cercanas)
 - Agregar Favicon.ico (Icono de la pagina en la pestaña)
