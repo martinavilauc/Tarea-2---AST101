@@ -47,3 +47,31 @@ Este proyecto utiliza el sistema de efemérides JPL Horizons, desarrollado y man
 - Titán: *Generado por Inteligencia Artificial*
 - Tritón: *Generado por Inteligencia Artificial*
 - Caronte: *Generado por Inteligencia Artificial*
+# Informacion:
+- Sol: https://es.wikipedia.org/wiki/Sol
+- Mercurio: https://es.wikipedia.org/wiki/Mercurio_(planeta)
+- Venus: https://es.wikipedia.org/wiki/Venus_(planeta)
+- Tierra: https://spaceplace.nasa.gov/all-about-earth/sp/
+- Marte: https://es.wikipedia.org/wiki/Marte_(planeta)
+- Ceres: https://es.wikipedia.org/wiki/Ceres_(planeta_enano)
+- Júpiter: https://science.nasa.gov/jupiter/jupiter-facts/
+- Saturno: https://es.wikipedia.org/wiki/Saturno_(planeta)
+- Urano: https://es.wikipedia.org/wiki/Urano_(planeta)
+- Neptuno: https://es.wikipedia.org/wiki/Neptuno_(planeta)
+- Plutón: https://es.wikipedia.org/wiki/Plut%C3%B3n_(planeta_enano)
+- Luna: https://es.wikipedia.org/wiki/Luna
+- Fobos: https://es.wikipedia.org/wiki/Fobos_(sat%C3%A9lite)
+- Deimos: https://es.wikipedia.org/wiki/Deimos_(sat%C3%A9lite)
+- Io: https://starwalk.space/es/news/jupiter-galilean-moons
+- Europa: https://starwalk.space/es/news/jupiter-galilean-moons
+- Ganimedes: https://starwalk.space/es/news/jupiter-galilean-moons
+- Calisto: https://starwalk.space/es/news/jupiter-galilean-moons
+- Encélado: https://es.wikipedia.org/wiki/Enc%C3%A9lado_(sat%C3%A9lite)
+- Titán: https://www.bbc.com/mundo/noticias-48527648
+- Tritón: https://es.wikipedia.org/wiki/Trit%C3%B3n_(sat%C3%A9lite)
+- Caronte: https://es.wikipedia.org/wiki/Caronte_(sat%C3%A9lite)
+- Parker Solar Probe: https://science.nasa.gov/mission/parker-solar-probe/
+- James Webb: https://ciencia.nasa.gov/universo/acerca-de-webb/
+- New horizons: https://science.nasa.gov/mission/new-horizons/
+- Voyager-1: https://ciencia.nasa.gov/mission/voyager-1-2/
+- Voyager-2: https://ciencia.nasa.gov/mission/voyager-2-2/
