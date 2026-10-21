@@ -155,7 +155,7 @@ MAX_CONCURRENCIA = 6
 # resto de las solicitudes en curso (a diferencia de time.sleep() en un
 # hilo), así que no hace falta ser tan conservador.
 MAX_REINTENTOS = 10
-ESPERA_BASE_SEGUNDOS = 0.001
+ESPERA_BASE_SEGUNDOS = 0.1
 
 # Limita la concurrencia a nivel global para no saturar los worker threads de JPL
 _SEMAFORO_JPL = asyncio.Semaphore(4)
