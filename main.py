@@ -154,7 +154,7 @@ MAX_CONCURRENCIA = 6
 # base bajó de 1.5s a 300ms: con asyncio.sleep() la espera no bloquea el
 # resto de las solicitudes en curso (a diferencia de time.sleep() en un
 # hilo), así que no hace falta ser tan conservador.
-MAX_REINTENTOS = 10
+MAX_REINTENTOS = 30
 ESPERA_BASE_SEGUNDOS = 0.1
 
 # Limita la concurrencia a nivel global para no saturar los worker threads de JPL
