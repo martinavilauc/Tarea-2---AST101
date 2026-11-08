@@ -1151,16 +1151,13 @@ function construirContenidoInfo(nombre, datos) {
     return html;
 }
 
-function mostrarInfoCuerpo(nombre, datos) {
+function mostrarInfoCuerpo(nombre, datos, forzarAbrir = false) {
     elInfoNombre.textContent = nombre;
     elInfoSubtitulo.textContent = subtituloCuerpo(datos);
     elInfoContenido.innerHTML = construirContenidoInfo(nombre, datos);
 
-    if (esPantallaMobil()) {
-        // En pantallas móviles ya no se abre el panel automáticamente al hacer clic.
-        // Solo dejamos disponible el botón flotante de la esquina inferior derecha.
-        // (O puedes mostrar el botón móvil antiguo si decidiste conservarlo).
-    } else {
+    // En escritorio abre siempre; en móvil se abre si el usuario pulsa explícitamente el botón info
+    if (!esPantallaMobil() || forzarAbrir) {
         abrirPanel(elPanelInfo);
     }
 
@@ -1751,24 +1748,32 @@ function centrarCamaraEnCuerpo(cuerpo, preservarZoom = false) {
     controls.update();
 }
 
-function onClickEscena(event) {
-    actualizarMouse(event);
-    const cuerpo = cuerpoBajoElMouse();
-    if (cuerpo) {
-        // En modo misiones no se abre el panel de información (ver
-        // seleccionarDesdeIndice): la atención está en la trayectoria que se
-        // está reproduciendo. Enfocar la cámara sí sigue funcionando.
-        if (!enModoMision()) {
-            mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
+// NUEVO DETECTOR TÁCTIL Y DE MOUSE OPTIMIZADO:
+let posInicioPuntero = { x: 0, y: 0 };
+let tiempoInicioPuntero = 0;
+
+renderer.domElement.addEventListener('pointerdown', (event) => {
+    posInicioPuntero = { x: event.clientX, y: event.clientY };
+    tiempoInicioPuntero = performance.now();
+});
+
+renderer.domElement.addEventListener('pointerup', (event) => {
+    const distX = Math.abs(event.clientX - posInicioPuntero.x);
+    const distY = Math.abs(event.clientY - posInicioPuntero.y);
+    const tiempoTranscurrido = performance.now() - tiempoInicioPuntero;
+
+    // Si el movimiento fue de menos de 10 píxeles y duró menos de 300 ms, es un toque/clic legítimo
+    if (distX < 10 && distY < 10 && tiempoTranscurrido < 300) {
+        actualizarMouse(event);
+        const cuerpo = cuerpoBajoElMouse();
+        if (cuerpo) {
+            if (!enModoMision()) {
+                mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
+            }
+            centrarCamaraEnCuerpo(cuerpo, true);
         }
-        // true: si es el mismo cuerpo que ya estaba enfocado (clickearlo de
-        // nuevo), preserva el zoom manual en vez de resetear a la distancia
-        // por defecto. Si es un cuerpo distinto, no tiene efecto: siempre
-        // usa el encuadre por defecto para ese cuerpo nuevo.
-        centrarCamaraEnCuerpo(cuerpo, true);
     }
-}
-renderer.domElement.addEventListener('click', onClickEscena);
+});
 
 // ============================================================
 // 11. Modo misiones
@@ -2528,7 +2533,8 @@ if (elBotonInfoDerecha) {
 
         const cuerpoEnfocado = cuerposInteractivos.find(c => c.nombre === nombreCuerpoEnfocado);
         if (cuerpoEnfocado) {
-            mostrarInfoCuerpo(cuerpoEnfocado.nombre, cuerpoEnfocado.datos);
+            // El tercer argumento "true" fuerza la apertura del panel aunque sea pantalla móvil
+            mostrarInfoCuerpo(cuerpoEnfocado.nombre, cuerpoEnfocado.datos, true);
         }
     });
 }
