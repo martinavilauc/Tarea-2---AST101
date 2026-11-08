@@ -48,7 +48,7 @@ function crearEstrellas() {
     const cantidad = 1500;
     const posiciones = new Float32Array(cantidad * 3);
     for (let idx = 0; idx < cantidad; idx++) {
-        const radio = 24000 + Math.random() * 16000; // 20x más lejos que antes (1200-2000 -> 24000-40000)
+        const radio = 40000 + Math.random() * 16000; // 20x más lejos que antes (1200-2000 -> 24000-40000)
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(2 * Math.random() - 1);
         posiciones[idx * 3] = radio * Math.sin(phi) * Math.cos(theta);
@@ -499,6 +499,15 @@ function limpiarCuerpos() {
 // desactivada) igual se ubique donde correspondería su padre.
 const posicionesPorNombre = new Map();
 
+// Objetos THREE.js (mesh visible, marcador de punto, hitbox, wireframe, y
+// el anillo de Saturno si corresponde) de cada cuerpo de la última
+// construcción, indexados por nombre. Se usa en modo misiones para mover
+// los cuerpos cuadro a cuadro actualizando solo su posición (ver
+// actualizarPosicionesMision), en vez de destruir y recrear toda la
+// geometría/materiales/texturas en cada cuadro — eso era lo que causaba el
+// parpadeo: reconstruir ~10 esferas con textura cada 120ms.
+let mallasPorNombre = {};
+
 // ============================================================
 // 4b. Texturas de superficie (Sol, planetas y lunas)
 // ============================================================
@@ -558,6 +567,7 @@ function aplicarTexturaCuerpo(material, nombre) {
 function construirCuerpos(cuerpos) {
     let distanciaVisualMaxima = 0;
     posicionesPorNombre.clear();
+    mallasPorNombre = {};
     const rangosLunas = calcularRangosLunas(cuerpos);
 
     Object.keys(cuerpos).forEach(nombre => {
@@ -623,6 +633,56 @@ function construirCuerpos(cuerpos) {
         scene.add(mesh);
         objetosCuerpos.push(mesh);
 
+        mallasPorNombre[nombre] = { mesh };
+
+        if (nombre === "Tierra" || nombre === "Venus" || nombre === "Júpiter") {
+            const radioAtmosfera = radioVisual * 1.01; 
+            const geoAtmosfera = new THREE.SphereGeometry(radioAtmosfera, 32, 32);
+            
+            let colorAtmosfera = new THREE.Color(0x3d85c6); // Azul Tierra
+            if (nombre === "Venus") colorAtmosfera = new THREE.Color(0xe3bc71);
+            if (nombre === "Júpiter") colorAtmosfera = new THREE.Color(0xd9a066);
+
+            // Shader material para lograr el desvanecimiento gradual hacia el espacio
+            const matAtmosfera = new THREE.ShaderMaterial({
+                vertexShader: `
+                    varying vec3 vNormal;
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vNormal;
+                    uniform vec3 colorAtmosfera;
+                    void main() {
+                        // Calcula la intensidad en los bordes (efecto Fresnel / atmósfera difusa)
+                        float intensidad = pow(0.6 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+                        gl_FragColor = vec4(colorAtmosfera, intensidad * 0.8);
+                    }
+                `,
+                uniforms: {
+                    colorAtmosfera: { value: colorAtmosfera }
+                },
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.BackSide // Se dibuja en la cara interna/externa para un halo perfecto
+            });
+
+            // Creamos un segundo material para la cara frontal y aseguramos el suavizado completo
+            const matAtmosferaFrontal = matAtmosfera.clone();
+            matAtmosferaFrontal.side = THREE.FrontSide;
+
+            const grupoAtmosfera = new THREE.Group();
+            grupoAtmosfera.add(new THREE.Mesh(geoAtmosfera, matAtmosfera));
+            grupoAtmosfera.add(new THREE.Mesh(geoAtmosfera, matAtmosferaFrontal));
+            
+            grupoAtmosfera.position.copy(posicion);
+            scene.add(grupoAtmosfera);
+            objetosCuerpos.push(grupoAtmosfera);
+        }
+
         if (esSol) {
             luzSol.position.copy(posicion);
         }
@@ -649,6 +709,7 @@ function construirCuerpos(cuerpos) {
             anillo.position.copy(posicion);
             scene.add(anillo);
             objetosCuerpos.push(anillo);
+            mallasPorNombre[nombre].anillo = anillo;
         }
 
         // Marcador puntual: visible como un punto de tamaño fijo en pantalla
@@ -661,6 +722,7 @@ function construirCuerpos(cuerpos) {
         marcadorPunto.position.copy(posicion);
         scene.add(marcadorPunto);
         objetosCuerpos.push(marcadorPunto);
+        mallasPorNombre[nombre].marcadorPunto = marcadorPunto;
 
         // Hitbox invisible y wireframe: qué tan lejos quedan de la
         // superficie real del cuerpo depende de la categoría.
@@ -699,6 +761,7 @@ function construirCuerpos(cuerpos) {
         hitbox.position.copy(posicion);
         scene.add(hitbox);
         objetosCuerpos.push(hitbox);
+        mallasPorNombre[nombre].hitbox = hitbox;
 
         const wireframe = new THREE.Mesh(
             new THREE.SphereGeometry(radioWireframe, 16, 16),
@@ -708,6 +771,7 @@ function construirCuerpos(cuerpos) {
         wireframe.visible = false;
         scene.add(wireframe);
         objetosCuerpos.push(wireframe);
+        mallasPorNombre[nombre].wireframe = wireframe;
 
         cuerposInteractivos.push({ meshRaycast: hitbox, wireframe, nombre, datos: data });
 
@@ -725,6 +789,7 @@ function construirCuerpos(cuerpos) {
             lineaOrbita.position.copy(posicionPadre);
             scene.add(lineaOrbita);
             objetosCuerpos.push(lineaOrbita);
+            mallasPorNombre[nombre].orbita = lineaOrbita;
         }
     });
 
@@ -774,6 +839,23 @@ function encuadrarCamara(distanciaVisualMaxima) {
 let fechaSeleccionada = null;
 
 async function cargarSistemaSolar(fecha) {
+    // Cambiar de fecha (o volver a "ahora") mientras corre una misión no
+    // tiene sentido: la misión tiene su propia línea de tiempo. Se sale del
+    // modo misión limpiando su estado, para no dejar la barra de
+    // reproducción y el rastro colgados sobre el sistema normal.
+    if (enModoMision()) {
+        misionActual = null;
+        escenaMisionConstruida = false;
+        reproduciendo = false;
+        if (rastroMision) {
+            scene.remove(rastroMision);
+            if (rastroMision.geometry) rastroMision.geometry.dispose();
+            if (rastroMision.material) rastroMision.material.dispose();
+            rastroMision = null;
+        }
+        elBarraMision.classList.remove('visible');
+        elMisionPlay.textContent = '▶';
+    }
     fechaSeleccionada = fecha || null;
     elCargando.style.display = 'flex';
     elBannerError.style.display = 'none';
@@ -860,6 +942,26 @@ async function cargarSistemaSolar(fecha) {
 // Vuelve a dibujar todo con el modoEscala actual, reusando los últimos datos
 // recibidos de la API (no vuelve a golpear JPL Horizons).
 function reconstruirConEscalaActual() {
+    // En modo misión, un cambio de escala/tamaño/órbitas debe reconstruir la
+    // escena con los cuerpos de la MISIÓN (cuadro actual), no con los de
+    // ultimosCuerpos (datos del modo normal) — si no, los cuerpos de la
+    // misión quedarían pisados por los del sistema normal (con lunas, etc.).
+    // Si no hay un cuerpo enfocado no se toca la cámara (el usuario puede
+    // estar mirando desde donde quiera); si lo hay, se lo reenfoca: un
+    // cambio de escala mueve muchísimo la posición del cuerpo en la escena,
+    // y la cámara anclada tiene que seguirlo (mismo criterio que en el modo
+    // normal, preservando ángulo y zoom).
+    if (enModoMision()) {
+        limpiarCuerpos();
+        construirCuerpos(cuerposDelCuadro(cuadroActual));
+        escenaMisionConstruida = true;
+        dibujarRastro(cuadroActual);
+        const cuerpoEnfocado = nombreCuerpoEnfocado
+            ? cuerposInteractivos.find(c => c.nombre === nombreCuerpoEnfocado)
+            : null;
+        if (cuerpoEnfocado) centrarCamaraEnCuerpo(cuerpoEnfocado, true);
+        return;
+    }
     if (!ultimosCuerpos) return; // todavía no llegó la primera respuesta de la API
     limpiarCuerpos();
     const distanciaMaxima = construirCuerpos(ultimosCuerpos);
@@ -894,6 +996,8 @@ const elPanelInfo = document.getElementById('panel-info');
 const elInfoNombre = document.getElementById('info-nombre');
 const elInfoSubtitulo = document.getElementById('info-subtitulo');
 const elInfoContenido = document.getElementById('info-contenido');
+// Botón flotante que solo se usa en móvil (ver mostrarInfoCuerpo): abre el
+// panel de información del cuerpo ya seleccionado.
 
 function formatearKm(valorKm) {
     return `${valorKm.toLocaleString('es-CL', { maximumFractionDigits: 0 })} km`;
@@ -1051,7 +1155,14 @@ function mostrarInfoCuerpo(nombre, datos) {
     elInfoNombre.textContent = nombre;
     elInfoSubtitulo.textContent = subtituloCuerpo(datos);
     elInfoContenido.innerHTML = construirContenidoInfo(nombre, datos);
-    abrirPanel(elPanelInfo);
+
+    if (esPantallaMobil()) {
+        // En pantallas móviles ya no se abre el panel automáticamente al hacer clic.
+        // Solo dejamos disponible el botón flotante de la esquina inferior derecha.
+        // (O puedes mostrar el botón móvil antiguo si decidiste conservarlo).
+    } else {
+        abrirPanel(elPanelInfo);
+    }
 
     if (datos) {
         cargarDescripcionCuerpo(nombre);
@@ -1076,21 +1187,26 @@ function subtituloCuerpo(datos) {
 const botonConfig = document.getElementById('config-boton');
 const elPanelConfig = document.getElementById('config-panel');
 
+
 function abrirPanel(panel) {
     if (esPantallaMobil()) {
-        // En pantallas chicas, los tres paneles (índice, configuración,
-        // información) son mutuamente excluyentes — abrir uno cierra los
-        // otros dos, para no superponerlos en un espacio angosto.
-        [elPanelIndice, elPanelConfig, elPanelInfo].forEach(p => {
+        // En pantallas chicas, todos los paneles (índice, misiones,
+        // configuración, información) son mutuamente excluyentes — abrir
+        // uno cierra los demás, para no superponerlos en un espacio angosto.
+        [elPanelIndice, elPanelMisiones, elPanelConfig, elPanelInfo].forEach(p => {
             p.style.display = (p === panel) ? 'flex' : 'none';
         });
     } else {
-        // En desktop, el índice es independiente (a la izquierda) de
-        // config/info (a la derecha) — abrirlo no debe tocar el estado de
-        // los otros dos. Config e info sí siguen siendo mutuamente
-        // excluyentes entre sí.
-        if (panel === elPanelIndice) {
-            panel.style.display = 'flex';
+        // En desktop hay dos lados independientes entre sí:
+        //   izquierda: índice y misiones (excluyentes entre ellos, ocupan
+        //              el mismo espacio);
+        //   derecha:   configuración e información (excluyentes entre ellos).
+        // Abrir uno de un lado no toca el estado del otro lado.
+        const esIzquierda = (panel === elPanelIndice || panel === elPanelMisiones);
+        if (esIzquierda) {
+            [elPanelIndice, elPanelMisiones].forEach(p => {
+                p.style.display = (p === panel) ? 'flex' : 'none';
+            });
         } else {
             [elPanelConfig, elPanelInfo].forEach(p => {
                 p.style.display = (p === panel) ? 'flex' : 'none';
@@ -1357,6 +1473,9 @@ function construirIndice(cuerpos) {
 // Seleccionar un cuerpo desde el índice hace lo mismo que clickearlo en la
 // escena 3D. Si estaba oculto, primero se muestra (auto-activa su casilla y
 // la de su categoría) para que tenga sentido enfocar la cámara en él.
+// Seleccionar un cuerpo desde el índice hace lo mismo que clickearlo en la
+// escena 3D. Si estaba oculto, primero se muestra (auto-activa su casilla y
+// la de su categoría) para que tenga sentido enfocar la cámara en él.
 function seleccionarDesdeIndice(nombre) {
     if (!ultimosCuerpos || !ultimosCuerpos[nombre]) return;
 
@@ -1367,9 +1486,21 @@ function seleccionarDesdeIndice(nombre) {
         reconstruirConEscalaActual();
     }
 
+    // ============================================================
+    // Ocultar el panel del índice automáticamente solo en modo móvil
+    // ============================================================
+    if (esPantallaMobil()) {
+        elPanelIndice.style.display = 'none';
+    }
+
     const cuerpo = cuerposInteractivos.find(c => c.nombre === nombre);
     if (cuerpo) {
-        mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
+        // En modo misiones no se abre el panel de información: la atención
+        // está en la trayectoria que se está reproduciendo, no en la ficha
+        // del cuerpo. Enfocar la cámara sí sigue funcionando.
+        if (!enModoMision()) {
+            mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
+        }
         // true: si es el mismo cuerpo que ya estaba enfocado, preserva el
         // zoom manual en vez de resetear a la distancia por defecto (si es
         // un cuerpo distinto, esto no tiene efecto — centrarCamaraEnCuerpo
@@ -1624,7 +1755,12 @@ function onClickEscena(event) {
     actualizarMouse(event);
     const cuerpo = cuerpoBajoElMouse();
     if (cuerpo) {
-        mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
+        // En modo misiones no se abre el panel de información (ver
+        // seleccionarDesdeIndice): la atención está en la trayectoria que se
+        // está reproduciendo. Enfocar la cámara sí sigue funcionando.
+        if (!enModoMision()) {
+            mostrarInfoCuerpo(cuerpo.nombre, cuerpo.datos);
+        }
         // true: si es el mismo cuerpo que ya estaba enfocado (clickearlo de
         // nuevo), preserva el zoom manual en vez de resetear a la distancia
         // por defecto. Si es un cuerpo distinto, no tiene efecto: siempre
@@ -1635,12 +1771,727 @@ function onClickEscena(event) {
 renderer.domElement.addEventListener('click', onClickEscena);
 
 // ============================================================
-// 11. Inicializar llamada y bucle de render
+// 11. Modo misiones
+// ============================================================
+// Reproduce la trayectoria histórica real de una sonda (y de los planetas)
+// a lo largo de los años que duró su misión, como una animación con slider
+// y play/pausa. Los datos vienen de /api/mision: por cada cuerpo, una lista
+// de posiciones (una por cada paso de tiempo). El truco para no duplicar
+// lógica es convertir el cuadro actual al MISMO formato que espera
+// construirCuerpos() (el de /api/sistema-solar), así se reutiliza toda la
+// maquinaria de escalas, tamaños, texturas y selección que ya existe.
+const elBotonMisiones = document.getElementById('misiones-boton');
+const elPanelMisiones = document.getElementById('misiones-panel');
+const elMisionesContenido = document.getElementById('misiones-contenido');
+const elBarraMision = document.getElementById('barra-mision');
+const elMisionTitulo = document.getElementById('mision-titulo');
+const elMisionSlider = document.getElementById('mision-slider');
+const elMisionPlay = document.getElementById('mision-play');
+const elMisionAnterior = document.getElementById('mision-anterior');
+const elMisionSiguiente = document.getElementById('mision-siguiente');
+const elMisionFecha = document.getElementById('mision-fecha');
+const elMisionVelocidad = document.getElementById('mision-velocidad');
+const velocidadesMision = [0.25, 0.5, 1, 2];
+let indiceVelocidad = 2;
+let multiplicadorVelocidad = 1;
+
+// Datos de la misión actualmente cargada (null = modo normal). Mientras no
+// sea null, la escena muestra el cuadro "cuadroActual" de la misión en vez
+// de las posiciones de /api/sistema-solar.
+let misionActual = null;
+let cuadroActual = 0;
+let reproduciendo = false;
+let ultimoAvanceMs = 0;
+
+// Cuánto tarda cada cuadro al reproducir (ms). 120ms da una animación
+// fluida sin pasar tan rápido como para perderse los sobrevuelos.
+const MS_POR_CUADRO = 120;
+
+// Objeto Line con el rastro recorrido por la sonda hasta el cuadro actual
+// (se redibuja en cada cuadro, por eso se guarda aparte para poder
+// eliminarlo antes de crear el siguiente).
+let rastroMision = null;
+
+// ¿Ya se construyó la escena de la misión actual (esferas, texturas,
+// hitboxes...)? Mientras sea true, los cuadros siguientes solo actualizan
+// posiciones (ver actualizarPosicionesMision) en vez de reconstruir todo.
+// Se pone en false al salir de la misión, para forzar una construcción
+// limpia la próxima vez.
+let escenaMisionConstruida = false;
+
+// Caches de la misión actual (se reinician en cargarMision):
+//  - curvasMision: spline Catmull-Rom por cuerpo (solo se usa para la sonda).
+//  - muestrasRastro: puntos de la spline de la sonda, calculados UNA vez por
+//    misión; en cada cuadro solo se escalan y se recortan hasta donde llegó.
+//  - ultimoSlider/ultimaFecha: último valor escrito en el DOM, para no
+//    reescribirlo 60 veces por segundo si no cambió.
+let curvasMision = {};
+let muestrasRastro = null;
+let ultimoSlider = null;
+let ultimaFecha = null;
+// Muestras de la spline por cada intervalo entre dos puntos de Horizons.
+const SUBMUESTRAS_RASTRO = 8;
+
+// ¿Está activo el modo misiones? Lo consultan onClickEscena y
+// seleccionarDesdeIndice para no abrir el panel de información mientras se
+// reproduce una misión.
+function enModoMision() {
+    return misionActual !== null;
+}
+
+// Convierte el cuadro "indice" de la misión al formato de /api/sistema-solar,
+// para poder pasárselo tal cual a construirCuerpos().
+// Spline Catmull-Rom (en km crudos) de la trayectoria de un cuerpo. Pasa
+// EXACTAMENTE por todos los puntos de JPL Horizons; solo interpola entre
+// ellos. Se crea la primera vez que se pide y se cachea por misión.
+function curvaDeCuerpo(nombre) {
+    if (!curvasMision[nombre]) {
+        const tray = misionActual.cuerpos[nombre].trayectoria;
+        curvasMision[nombre] = new THREE.CatmullRomCurve3(tray.map(p => new THREE.Vector3(p.x, p.y, p.z)));
+    }
+    return curvasMision[nombre];
+}
+
+// Posición (km) de un cuerpo en un instante FRACCIONARIO del índice de la
+// misión (p. ej. 3.4 = 40% del camino entre la muestra 3 y la 4). Cada tipo
+// de cuerpo se interpola con el método que le queda bien:
+//  - planetas: en polares sobre el plano de la órbita (radio y ángulo por
+//    separado). Con paso de 30 días Mercurio avanza ~123° entre muestras:
+//    una interpolación lineal cortaría la cuerda por dentro de su órbita,
+//    en polares conserva el radio.
+//  - sonda: la spline Catmull-Rom (la misma del rastro, así el punto de la
+//    sonda queda siempre justo en la punta del rastro).
+//  - Sol: lineal (solo se bambolea cerca del baricentro).
+function posicionInterpolada(nombre, categoria, indice) {
+    const tray = misionActual.cuerpos[nombre].trayectoria;
+    const ultimo = tray.length - 1;
+    const i0 = Math.min(Math.floor(indice), ultimo);
+    const i1 = Math.min(i0 + 1, ultimo);
+    const t = indice - i0;
+    const a = tray[i0];
+    const b = tray[i1];
+    if (!a) return null;
+    if (t <= 0 || i0 === i1) return a;
+
+    if (categoria === 'satelite') {
+        return curvaDeCuerpo(nombre).getPoint(indice / Math.max(ultimo, 1));
+    }
+    if (categoria === 'planeta') {
+        const ra = Math.hypot(a.x, a.y);
+        const rb = Math.hypot(b.x, b.y);
+        if (ra > 0 && rb > 0) {
+            const ta = Math.atan2(a.y, a.x);
+            let d = Math.atan2(b.y, b.x) - ta;
+            while (d > Math.PI) d -= 2 * Math.PI;
+            while (d < -Math.PI) d += 2 * Math.PI;
+            const r = ra + (rb - ra) * t;
+            const th = ta + d * t;
+            return { x: r * Math.cos(th), y: r * Math.sin(th), z: a.z + (b.z - a.z) * t };
+        }
+    }
+    return {
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+        z: a.z + (b.z - a.z) * t,
+    };
+}
+
+// Convierte los cuerpos de un instante (entero o fraccionario) de la misión
+// al formato de /api/sistema-solar, para pasárselos a construirCuerpos() o
+// a actualizarPosicionesMision().
+function cuerposDelCuadro(indice) {
+    const cuerpos = {};
+    Object.keys(misionActual.cuerpos).forEach(nombre => {
+        const datos = misionActual.cuerpos[nombre];
+        const punto = posicionInterpolada(nombre, datos.categoria, indice);
+        if (!punto) return;
+        cuerpos[nombre] = {
+            color: datos.color,
+            radio_km: datos.radio_km,
+            radio_exagerado: datos.radio_exagerado,
+            categoria: datos.categoria,
+            cuerpo_padre: null,
+            coordenadas: { x: punto.x, y: punto.y, z: punto.z },
+            // Aros de órbita SOLO para planetas (y lunas, más abajo): construirCuerpos
+            // dibuja el aro de todo cuerpo que traiga elementos_orbitales. El Sol y
+            // la sonda no los traen a propósito (la sonda tiene su rastro).
+            elementos_orbitales: datos.categoria === 'planeta' ? (datos.elementos_orbitales || null) : null,
+        };
+    });
+
+    // Lunas: se agregan como cuerpos con su planeta padre, así construirCuerpos
+    // las ubica relativas a él y dibuja su aro (con las mismas escalas de
+    // lunas y las mismas casillas del índice que en el modo normal). Su
+    // posición es la "foto" de la fecha central de la misión (ver el
+    // backend): una luna da una vuelta en días y la animación avanza de a
+    // meses, así que animarla sería solo ruido. Solo se agregan si su
+    // planeta está presente en este cuadro.
+    const lunas = misionActual.lunas || {};
+    Object.keys(lunas).forEach(nombre => {
+        const luna = lunas[nombre];
+        if (!cuerpos[luna.cuerpo_padre]) return;
+        cuerpos[nombre] = {
+            color: luna.color,
+            radio_km: luna.radio_km,
+            radio_exagerado: luna.radio_exagerado,
+            categoria: 'luna',
+            cuerpo_padre: luna.cuerpo_padre,
+            coordenadas: luna.coordenadas,
+            elementos_orbitales: luna.elementos_orbitales || null,
+        };
+    });
+    return cuerpos;
+}
+
+// Fecha correspondiente a un cuadro, interpolando linealmente entre el
+// inicio y el fin de la misión. Es aproximada (Horizons no necesariamente
+// devuelve pasos perfectamente equiespaciados), pero alcanza para ubicarse
+// temporalmente mientras se reproduce.
+// 'YYYY-MM-DD' o 'YYYY-MM-DD HH:MM' (UTC) -> milisegundos desde 1970. El
+// formato con hora hace falta para misiones de días (pasos de minutos/horas).
+function msFechaMision(texto) {
+    const t = texto.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return Date.parse(t + 'T00:00:00Z');
+    return Date.parse(t.replace(' ', 'T') + (t.length === 16 ? ':00Z' : 'Z'));
+}
+
+function fechaDelCuadro(indice) {
+    const inicio = msFechaMision(misionActual.inicio);
+    let ms;
+    if (misionActual.paso_segundos) {
+        // Fecha EXACTA: Horizons entrega las muestras en inicio + k·paso, y la
+        // última queda antes de "fin" si la ventana no es múltiplo del paso
+        // (en Voyager 2, 15 días antes). Estirar los cuadros hasta "fin"
+        // —lo que se hacía antes— desfasaba la fecha mostrada.
+        ms = inicio + indice * misionActual.paso_segundos * 1000;
+    } else {
+        // Pasos sin duración fija (meses, años): no queda otra que repartir
+        // los cuadros de forma lineal entre el inicio y el fin.
+        const fin = msFechaMision(misionActual.fin);
+        ms = inicio + (fin - inicio) * (indice / Math.max(misionActual.cuadros - 1, 1));
+    }
+    const iso = new Date(ms).toISOString();
+    // Con pasos de minutos u horas, mostrar solo el día no dice nada (la
+    // fecha quedaría quieta decenas de cuadros): se agrega la hora.
+    return misionActual.con_hora ? iso.slice(0, 16).replace('T', ' ') + ' UTC' : iso.slice(0, 10);
+}
+
+// Dibuja el rastro ya recorrido por la sonda hasta el cuadro actual.
+// Km crudos -> posición en la escena (mismo cálculo y mismo mapeo de ejes
+// que usa construirCuerpos para un cuerpo sin padre).
+function puntoAEscena(p) {
+    const d = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+    if (d <= 0) return null;
+    const factor = escalarDistancia(d) / d;
+    return new THREE.Vector3(p.x * factor, p.z * factor, p.y * factor);
+}
+
+// Dibuja el rastro recorrido por la sonda hasta el instante "indice"
+// (fraccionario). Usa la spline Catmull-Rom de la sonda, muestreada UNA vez
+// por misión; en cada cuadro solo se escalan las muestras ya recorridas y se
+// agrega como punta del rastro la posición exacta actual de la sonda.
+// Reutiliza la misma línea y el mismo material: solo cambia la geometría.
+function dibujarRastro(indice) {
+    const datosSonda = misionActual && misionActual.cuerpos[misionActual.cuerpo];
+    const ultimo = datosSonda ? datosSonda.trayectoria.length - 1 : 0;
+    if (!datosSonda || indice <= 0 || ultimo < 1) {
+        if (rastroMision) rastroMision.visible = false;
+        return;
+    }
+
+    if (!muestrasRastro) {
+        muestrasRastro = curvaDeCuerpo(misionActual.cuerpo).getPoints(SUBMUESTRAS_RASTRO * ultimo);
+    }
+
+    const hasta = Math.min(Math.floor(indice * SUBMUESTRAS_RASTRO), muestrasRastro.length - 1);
+    const puntos = [];
+    for (let k = 0; k <= hasta; k++) {
+        const p = puntoAEscena(muestrasRastro[k]);
+        if (p) puntos.push(p);
+    }
+    // Punta del rastro: posición exacta de la sonda en este instante.
+    const punta = puntoAEscena(posicionInterpolada(misionActual.cuerpo, datosSonda.categoria, indice));
+    if (punta) puntos.push(punta);
+    if (puntos.length < 2) {
+        if (rastroMision) rastroMision.visible = false;
+        return;
+    }
+
+    const geometria = new THREE.BufferGeometry().setFromPoints(puntos);
+    if (!rastroMision) {
+        rastroMision = new THREE.Line(geometria, new THREE.LineBasicMaterial({
+            color: datosSonda.color,
+            transparent: true,
+            opacity: 0.85,
+        }));
+        scene.add(rastroMision);
+    } else {
+        if (rastroMision.geometry) rastroMision.geometry.dispose();
+        rastroMision.geometry = geometria;
+        rastroMision.visible = true;
+    }
+}
+
+// Dibuja el cuadro "indice" de la misión (cuerpos + rastro) y actualiza los
+// controles. Preserva la cámara: durante la reproducción el usuario puede
+// estar mirando desde donde quiera, y saltar el encuadre en cada cuadro
+// haría imposible seguir nada.
+// Mueve los cuerpos YA construidos a las posiciones de un cuadro, tocando
+// solo su .position — sin destruir ni recrear geometrías, materiales ni
+// texturas. Antes cada cuadro hacía limpiarCuerpos() + construirCuerpos(),
+// o sea reconstruir ~10 esferas con textura, hitbox, wireframe y marcador
+// cada 120ms: eso era lo que hacía parpadear la animación (además de ser
+// carísimo en memoria/GC).
+function actualizarPosicionesMision(cuerpos) {
+    // Si hay un cuerpo enfocado, se recuerda dónde estaba ANTES de moverlo
+    // para poder desplazar la cámara con él (ver el final de la función).
+    const posicionPrevia = (nombreCuerpoEnfocado && posicionesPorNombre.has(nombreCuerpoEnfocado))
+        ? posicionesPorNombre.get(nombreCuerpoEnfocado).clone()
+        : null;
+
+    const rangosLunas = calcularRangosLunas(cuerpos);
+
+    // Misma lógica de posición que construirCuerpos: un cuerpo sin padre va
+    // en coordenadas del baricentro; una luna va relativa a su planeta
+    // (posición del padre + coordenadas × factor). La posición se registra
+    // SIEMPRE, incluso si el cuerpo está oculto desde el índice, para que
+    // una luna visible con su planeta oculto igual quede donde corresponde.
+    const mover = (nombre) => {
+        const datos = cuerpos[nombre];
+        let posicionPadre = new THREE.Vector3(0, 0, 0);
+        if (datos.cuerpo_padre) {
+            if (!posicionesPorNombre.has(datos.cuerpo_padre)) return;
+            posicionPadre = posicionesPorNombre.get(datos.cuerpo_padre);
+        }
+
+        const factor = obtenerFactorEscalaPosicion(nombre, datos, cuerpos, rangosLunas);
+        const c = datos.coordenadas;
+        const posicion = posicionPadre.clone().add(new THREE.Vector3(c.x * factor, c.z * factor, c.y * factor));
+        posicionesPorNombre.set(nombre, posicion);
+
+        const mallas = mallasPorNombre[nombre];
+        if (mallas) {
+            ['mesh', 'marcadorPunto', 'hitbox', 'wireframe', 'anillo'].forEach(clave => {
+                if (mallas[clave]) mallas[clave].position.copy(posicion);
+            });
+            // El aro de una luna está centrado en su planeta, así que se
+            // mueve con él. El de un planeta está centrado en el baricentro
+            // y no se mueve nunca.
+            if (datos.cuerpo_padre && mallas.orbita) mallas.orbita.position.copy(posicionPadre);
+        }
+        if (nombre === 'Sol') luzSol.position.copy(posicion);
+    };
+
+    // Primero los cuerpos sin padre y después las lunas: cada luna necesita
+    // la posición YA actualizada de su planeta.
+    const nombres = Object.keys(cuerpos);
+    nombres.filter(n => !cuerpos[n].cuerpo_padre).forEach(mover);
+    nombres.filter(n => cuerpos[n].cuerpo_padre).forEach(mover);
+
+    // Cámara anclada al cuerpo enfocado: en una misión los cuerpos se mueven
+    // cuadro a cuadro, pero la cámara y su punto de órbita (controls.target)
+    // se quedaban quietos donde estaban al enfocar, y el cuerpo se alejaba
+    // hasta salirse de la vista. Se trasladan AMBOS por el mismo
+    // desplazamiento que tuvo el cuerpo, en vez de recolocar la cámara a una
+    // distancia fija: así se conserva todo lo que el usuario haya hecho
+    // (ángulo, zoom, incluso un paneo manual) y solo se acompaña el movimiento.
+    if (posicionPrevia) {
+        const posicionNueva = posicionesPorNombre.get(nombreCuerpoEnfocado);
+        if (posicionNueva) {
+            const desplazamiento = posicionNueva.clone().sub(posicionPrevia);
+            camera.position.add(desplazamiento);
+            controls.target.add(desplazamiento);
+        }
+    }
+}
+
+function mostrarCuadroMision(indice) {
+    if (!misionActual) return;
+    cuadroActual = Math.max(0, Math.min(indice, misionActual.cuadros - 1));
+
+    const cuerposCuadro = cuerposDelCuadro(cuadroActual);
+
+    if (escenaMisionConstruida) {
+        actualizarPosicionesMision(cuerposCuadro);
+    } else {
+        limpiarCuerpos();
+        construirCuerpos(cuerposCuadro);
+        escenaMisionConstruida = true;
+    }
+
+    dibujarRastro(cuadroActual);
+
+    // cuadroActual es FRACCIONARIO (el tiempo avanza de forma continua); el
+    // slider y la fecha solo se reescriben cuando su valor visible cambia.
+    const sliderVal = Math.round(cuadroActual);
+    if (sliderVal !== ultimoSlider) {
+        elMisionSlider.value = String(sliderVal);
+        ultimoSlider = sliderVal;
+    }
+    const fecha = fechaDelCuadro(cuadroActual);
+    if (fecha !== ultimaFecha) {
+        elMisionFecha.textContent = fecha;
+        ultimaFecha = fecha;
+    }
+}
+
+// Apunta la cámara a un cuerpo y a una distancia dada (en km, convertida a
+// la escala activa), y la deja ANCLADA a ese cuerpo (ver
+// actualizarPosicionesMision). Sirve para misiones a escala Tierra-Luna: con
+// el encuadre por defecto se vería todo el sistema solar, y el sistema
+// Tierra-Luna, de 0,1 unidades, sería un punto.
+function aplicarEncuadreMision(encuadre) {
+    anclarCamaraEnCuerpo(encuadre.cuerpo, escalarDistancia(encuadre.distancia_km));
+}
+
+// Ancla la cámara a un cuerpo (queda siguiéndolo mientras se reproduce, ver
+// actualizarPosicionesMision) a una distancia dada, en unidades de escena.
+// centrarCamaraEnCuerpo ya deja la cámara anclada y ajusta minDistance y el
+// plano cercano al tamaño del cuerpo; después se REPONE la distancia pedida,
+// porque su encuadre por defecto (el cuerpo ocupando 1/3 de la pantalla)
+// para algo tan chico como una sonda daría una vista a pocos miles de km, sin
+// ningún contexto.
+function anclarCamaraEnCuerpo(nombre, distanciaEscena) {
+    const cuerpo = cuerposInteractivos.find(c => c.nombre === nombre);
+    if (!cuerpo) return false;
+    centrarCamaraEnCuerpo(cuerpo);
+    const direccion = camera.position.clone().sub(controls.target).normalize();
+    camera.position.copy(controls.target).addScaledVector(direccion, Math.max(distanciaEscena, controls.minDistance));
+    controls.update();
+    return true;
+}
+
+// Botón "Seguir": la sonda de la misión no está en el índice y, a la escala
+// de una misión, su zona de clic mide unos pocos píxeles — este botón es la
+// forma práctica de seguirla. Conserva el zoom actual.
+function seguirProtagonistaMision() {
+    if (!misionActual) return;
+    anclarCamaraEnCuerpo(misionActual.cuerpo, camera.position.distanceTo(controls.target));
+}
+
+async function cargarMision(nombre) {
+    elPanelMisiones.style.display = 'none';
+    elCargando.style.display = 'flex';
+    elBannerError.style.display = 'none';
+
+    let datos;
+    try {
+        const res = await fetch(`/api/mision?nombre=${encodeURIComponent(nombre)}`);
+        if (!res.ok) {
+            const detalle = await res.json().catch(() => null);
+            throw new Error(detalle && detalle.detail ? detalle.detail : `status ${res.status}`);
+        }
+        datos = await res.json();
+    } catch (error) {
+        console.error('No se pudo cargar la misión:', error);
+        mostrarError(`No se pudo cargar la misión "${nombre}".\nDetalle: ${error.message}`);
+        elCargando.style.display = 'none';
+        return;
+    }
+
+    if (!datos.cuadros) {
+        mostrarError(
+            `La misión "${nombre}" no trajo ningún cuadro de trayectoria. `
+            + `Revisa el log del servidor: puede que el rango de fechas esté fuera `
+            + `de lo que JPL Horizons cubre para esa sonda.`
+        );
+        elCargando.style.display = 'none';
+        return;
+    }
+
+    misionActual = datos;
+    cuadroActual = 0;
+    reproduciendo = false;
+    indiceVelocidad = 2;
+    multiplicadorVelocidad = 1;
+    if (elMisionVelocidad) elMisionVelocidad.textContent = '1x';
+    // Caches de la misión anterior (curvas, muestras, DOM) y su rastro: el
+    // rastro ahora se reutiliza entre cuadros, así que hay que sacar el de
+    // una misión previa (otro color, otra sonda) antes de empezar.
+    curvasMision = {};
+    muestrasRastro = null;
+    ultimoSlider = null;
+    ultimaFecha = null;
+    if (rastroMision) {
+        scene.remove(rastroMision);
+        if (rastroMision.geometry) rastroMision.geometry.dispose();
+        if (rastroMision.material) rastroMision.material.dispose();
+        rastroMision = null;
+    }
+
+    // Salir de cualquier selección previa: en modo misiones no se muestra
+    // info de cuerpos (ver onClickEscena), así que dejar un panel abierto
+    // de antes sería confuso.
+    nombreCuerpoEnfocado = null;
+    cerrarPaneles();
+
+    elMisionTitulo.textContent = `${datos.nombre} · ${datos.inicio} → ${datos.fin}`;
+    document.getElementById('mision-seguir').title = `Anclar la cámara a ${datos.cuerpo}`;
+    elMisionSlider.min = '0';
+    elMisionSlider.max = String(datos.cuadros - 1);
+    elMisionSlider.value = '0';
+    elMisionPlay.textContent = '▶';
+    elBarraMision.classList.add('visible');
+
+    // Encuadre inicial: vista general del sistema, para ver el recorrido
+    // completo en contexto.
+    controls.target.set(0, 0, 0);
+    camera.near = 0.05;
+    camera.updateProjectionMatrix();
+    limpiarCuerpos();
+    const distanciaMaxima = construirCuerpos(cuerposDelCuadro(0));
+    // La escena ya quedó construida con los cuerpos de ESTA misión: de acá
+    // en más mostrarCuadroMision solo actualiza posiciones. (Antes el cuadro
+    // 0 se construía dos veces: acá y otra vez dentro de mostrarCuadroMision.)
+    escenaMisionConstruida = true;
+    encuadrarCamara(distanciaMaxima);
+    mostrarCuadroMision(0);
+    if (datos.encuadre) aplicarEncuadreMision(datos.encuadre);
+
+    if (Object.keys(datos.errores || {}).length > 0) {
+        console.warn('Cuerpos con error en esta misión:', datos.errores);
+    }
+
+    elCargando.style.display = 'none';
+}
+
+function salirDeMision() {
+    misionActual = null;
+    escenaMisionConstruida = false;
+    reproduciendo = false;
+    cuadroActual = 0;
+    indiceVelocidad = 2;
+    multiplicadorVelocidad = 1;
+    if (elMisionVelocidad) elMisionVelocidad.textContent = '1x';
+
+    if (rastroMision) {
+        scene.remove(rastroMision);
+        if (rastroMision.geometry) rastroMision.geometry.dispose();
+        if (rastroMision.material) rastroMision.material.dispose();
+        rastroMision = null;
+    }
+
+    elBarraMision.classList.remove('visible');
+    elMisionPlay.textContent = '▶';
+
+    // Volver a las posiciones normales (tiempo real o la fecha elegida).
+    cargarSistemaSolar(fechaSeleccionada);
+}
+
+function alternarReproduccion() {
+    if (!misionActual) return;
+    // Si terminó, volver a empezar en vez de quedarse trabado en el final.
+    if (!reproduciendo && cuadroActual >= misionActual.cuadros - 1) {
+        mostrarCuadroMision(0);
+    }
+    reproduciendo = !reproduciendo;
+    elMisionPlay.textContent = reproduciendo ? '⏸' : '▶';
+    ultimoAvanceMs = performance.now();
+}
+
+// Avance de la reproducción, llamado desde el bucle de render (animate).
+function actualizarReproduccionMision(ahoraMs) {
+    if (!misionActual) return;
+    if (!reproduciendo) {
+        // Mantener el reloj al día: al apretar play, el primer avance debe
+        // medirse desde ahora y no desde la última vez que se reprodujo.
+        ultimoAvanceMs = ahoraMs;
+        return;
+    }
+    // Avance CONTINUO según el tiempo real transcurrido (a la frecuencia
+    // de render, ~60 fps), en vez de saltar un cuadro entero cada 120 ms
+    // (~8 fps), que se veía entrecortado. El tope de 100 ms evita un salto
+    // enorme si la pestaña estuvo en segundo plano.
+    const dt = Math.min(ahoraMs - ultimoAvanceMs, 100) * multiplicadorVelocidad;
+    ultimoAvanceMs = ahoraMs;
+    if (dt <= 0) return;
+
+    const siguiente = cuadroActual + dt / MS_POR_CUADRO;
+    if (siguiente >= misionActual.cuadros - 1) {
+        mostrarCuadroMision(misionActual.cuadros - 1);
+        reproduciendo = false;
+        elMisionPlay.textContent = '▶';
+        return;
+    }
+    mostrarCuadroMision(siguiente);
+}
+
+// Menú de misiones: tarjetas con preview, título y descripción corta.
+async function construirMenuMisiones() {
+    let misiones;
+    try {
+        const res = await fetch('/api/misiones');
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        misiones = await res.json();
+    } catch (error) {
+        console.error('No se pudo cargar el catálogo de misiones:', error);
+        elMisionesContenido.textContent = 'No se pudo cargar el catálogo de misiones.';
+        return;
+    }
+
+    elMisionesContenido.innerHTML = '';
+    const nombres = Object.keys(misiones);
+    if (nombres.length === 0) {
+        elMisionesContenido.textContent = 'No hay misiones configuradas.';
+        return;
+    }
+
+    nombres.forEach(nombre => {
+        const info = misiones[nombre];
+        const tarjeta = document.createElement('button');
+        tarjeta.type = 'button';
+        tarjeta.className = 'mision-tarjeta';
+
+        // Preview: static/resources/<slug>.jpg. Si no existe, se oculta la
+        // imagen y la tarjeta queda solo con texto (igual que las fotos de
+        // los cuerpos).
+        const img = document.createElement('img');
+        // Subcarpeta propia (resources/misiones/) a propósito: el slug de
+        // una misión puede coincidir con el de un cuerpo — p. ej. la misión
+        // "Voyager 1" y la sonda "Voyager 1" dan el mismo "voyager-1" — y
+        // si compartieran carpeta, una imagen pisaría a la otra.
+        img.src = `resources/misiones/${info.slug}.jpg`;
+        img.alt = nombre;
+        img.onerror = () => { img.style.display = 'none'; };
+
+        const contenedorTexto = document.createElement('div');
+        contenedorTexto.className = 'mision-cuerpo-texto';
+
+        const titulo = document.createElement('h4');
+        titulo.textContent = nombre;
+
+        const desc = document.createElement('p');
+        desc.textContent = info.descripcion_corta || '';
+
+        const rango = document.createElement('span');
+        rango.className = 'mision-rango';
+        rango.textContent = `${info.inicio} → ${info.fin} · paso ${info.paso}`;
+
+        contenedorTexto.appendChild(titulo);
+        contenedorTexto.appendChild(desc);
+        contenedorTexto.appendChild(rango);
+        tarjeta.appendChild(img);
+        tarjeta.appendChild(contenedorTexto);
+
+        tarjeta.addEventListener('click', () => cargarMision(nombre));
+        elMisionesContenido.appendChild(tarjeta);
+    });
+}
+
+// Ficha de la misión en el panel de información, con el mismo formato que
+// la de un cuerpo: preview arriba, descripción cargada desde su .txt, y una
+// tabla con los datos de la ventana temporal. Como el panel es el mismo
+// (#panel-info), alcanza con rellenarlo y abrirlo.
+function mostrarInfoMision() {
+    if (!misionActual) return;
+
+    const slug = misionActual.slug;
+    // Qué decir de las lunas: normalmente todas quedan fijas (dan una vuelta
+    // en días y la animación avanza de a meses), pero en misiones de días
+    // algunas se animan de verdad.
+    const animadas = misionActual.lunas_animadas || [];
+    elInfoNombre.textContent = misionActual.nombre;
+    elInfoSubtitulo.textContent = 'Misión';
+    elInfoContenido.innerHTML = `
+        <img class="imagen-cuerpo" src="resources/misiones/${slug}.jpg" alt="${misionActual.nombre}"
+             onerror="this.style.display='none'">
+        <p class="descripcion-cuerpo" id="descripcion-cuerpo-actual" data-nombre="__mision__">Cargando información…</p>
+        <h3>Ventana de la misión</h3>
+        <table>
+            <tr><td>Sonda</td><td>${misionActual.cuerpo}</td></tr>
+            <tr><td>Inicio</td><td>${misionActual.inicio}</td></tr>
+            <tr><td>Fin</td><td>${misionActual.fin}</td></tr>
+            <tr><td>Paso</td><td>${misionActual.paso}</td></tr>
+            <tr><td>Cuadros</td><td>${misionActual.cuadros}</td></tr>
+        </table>
+        <p class="nota">
+            Las posiciones de la sonda y de los planetas a lo largo de esta
+            ventana se consultan al sistema de efemérides JPL Horizons de la NASA:
+            son trayectorias reales calculadas por la NASA.
+        </p>
+    `;
+    abrirPanel(elPanelInfo);
+
+    // Misma mecánica que cargarDescripcionCuerpo, pero apuntando a la
+    // subcarpeta de misiones.
+    fetch(`resources/misiones/${slug}.txt`)
+        .then(res => (res.ok ? res.text() : null))
+        .then(texto => {
+            const contenedor = document.getElementById('descripcion-cuerpo-actual');
+            if (!contenedor || contenedor.dataset.nombre !== '__mision__') return;
+            if (texto && texto.trim()) {
+                contenedor.textContent = texto.trim();
+            } else {
+                contenedor.remove();
+            }
+        })
+        .catch(() => {
+            const contenedor = document.getElementById('descripcion-cuerpo-actual');
+            if (contenedor && contenedor.dataset.nombre === '__mision__') contenedor.remove();
+        });
+}
+
+elBotonMisiones.addEventListener('click', () => {
+    const yaAbierto = elPanelMisiones.style.display === 'flex';
+    if (yaAbierto) {
+        elPanelMisiones.style.display = 'none';
+    } else {
+        abrirPanel(elPanelMisiones);
+        if (!elMisionesContenido.hasChildNodes()) construirMenuMisiones();
+    }
+});
+document.getElementById('cerrar-misiones').addEventListener('click', () => {
+    elPanelMisiones.style.display = 'none';
+});
+
+elMisionPlay.addEventListener('click', alternarReproduccion);
+
+// Lógica para retroceder un cuadro al estar en pausa
+elMisionAnterior.addEventListener('click', () => {
+    if (!misionActual) return;
+    reproduciendo = false;
+    elMisionPlay.textContent = '▶';
+    
+    // Retrocede exactamente un cuadro, asegurando no bajar del límite 0
+    const cuadroAnterior = Math.max(cuadroActual - 1, 0);
+    mostrarCuadroMision(cuadroAnterior);
+});
+
+elMisionSiguiente.addEventListener('click', () => {
+    if (!misionActual) return;
+    reproduciendo = false;
+    elMisionPlay.textContent = '▶';
+    
+    const siguienteCuadro = Math.min(cuadroActual + 1, misionActual.cuadros - 1);
+    mostrarCuadroMision(siguienteCuadro);
+});
+
+elMisionVelocidad.addEventListener('click', () => {
+    indiceVelocidad = (indiceVelocidad + 1) % velocidadesMision.length;
+    multiplicadorVelocidad = velocidadesMision[indiceVelocidad];
+    elMisionVelocidad.textContent = multiplicadorVelocidad + 'x';
+});
+
+document.getElementById('salir-mision').addEventListener('click', salirDeMision);
+document.getElementById('mision-info').addEventListener('click', mostrarInfoMision);
+document.getElementById('mision-seguir').addEventListener('click', seguirProtagonistaMision);
+
+elMisionSlider.addEventListener('input', () => {
+    // Mover el slider a mano pausa la reproducción: si no, el próximo
+    // avance automático pisaría el cuadro recién elegido.
+    reproduciendo = false;
+    elMisionPlay.textContent = '▶';
+    mostrarCuadroMision(parseInt(elMisionSlider.value, 10));
+});
+
+// ============================================================
+// 12. Inicializar llamada y bucle de render
 // ============================================================
 cargarSistemaSolar(null);
 
-function animate() {
+function animate(ahoraMs) {
     requestAnimationFrame(animate);
+    actualizarReproduccionMision(ahoraMs || 0);
     controls.update();
     renderer.render(scene, camera);
 }
@@ -1659,4 +2510,25 @@ window.addEventListener('resize', () => {
         wireframeActivo.visible = false;
         wireframeActivo = null;
     }
+
+    // El botón flotante de info solo tiene sentido en móvil: si el resize
+    // cruza a desktop, se saca la clase para que no quede colgado (el CSS
+    // ya lo oculta fuera del media query, pero limpiar la clase evita que
+    // reaparezca sin motivo si se vuelve a achicar la ventana sin haber
+    // seleccionado otro cuerpo).
 });
+const elBotonInfoDerecha = document.getElementById('info-boton-derecha');
+
+if (elBotonInfoDerecha) {
+    elBotonInfoDerecha.addEventListener('click', () => {
+        if (!nombreCuerpoEnfocado) {
+            alert("Primero selecciona o haz clic en un cuerpo celeste.");
+            return;
+        }
+
+        const cuerpoEnfocado = cuerposInteractivos.find(c => c.nombre === nombreCuerpoEnfocado);
+        if (cuerpoEnfocado) {
+            mostrarInfoCuerpo(cuerpoEnfocado.nombre, cuerpoEnfocado.datos);
+        }
+    });
+}

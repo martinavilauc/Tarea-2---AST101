@@ -133,3 +133,89 @@ async def pedir_elementos_orbitales(
         'arg_perihelio_deg': w,
         'semieje_mayor_km': qr / (1.0 - ec)  # Cálculo del semieje mayor (a)
     }
+
+
+async def pedir_trayectoria(
+    cliente: httpx.AsyncClient,
+    cuerpo_celeste: str,
+    fecha_inicio: datetime,
+    fecha_fin: datetime,
+    paso: str = "30d",
+    centro: str = "500@0",
+):
+    """Pide la trayectoria COMPLETA de un cuerpo entre dos fechas, en vez de
+    su posición en un único instante (lo que hace pedir_cordenadas).
+
+    Se usa para el "modo misiones": con una sola solicitud a JPL Horizons se
+    obtienen todos los puntos de la trayectoria de una sonda (o de cualquier
+    cuerpo) a lo largo de años, en vez de hacer una solicitud por cada paso
+    de tiempo — que para una misión como la Voyager 1 (decenas de años)
+    serían cientos de solicitudes.
+
+    paso: STEP_SIZE de Horizons, en su sintaxis ("30d" = cada 30 días,
+    "1y" = cada año, "6h" = cada 6 horas, etc.). Ojo con el tamaño del
+    resultado: un paso chico sobre un rango largo devuelve muchísimos
+    puntos y una respuesta enorme.
+
+    Devuelve una lista de dicts {x, y, z} en el MISMO orden temporal que
+    entrega Horizons (del inicio al final). Si no se pudo leer ninguna
+    posición, levanta ValueError con el texto que respondió Horizons.
+    A diferencia de pedir_cordenadas, acá se usa re.findall (no re.search):
+    hay que capturar TODOS los pasos de tiempo, no solo el primero.
+    """
+    parametros = {
+        "format": "json",
+        "COMMAND": f"'{cuerpo_celeste}'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": f"'{centro}'",
+        "START_TIME": f"'{fecha_inicio.strftime('%Y-%m-%d %H:%M')}'",
+        "STOP_TIME": f"'{fecha_fin.strftime('%Y-%m-%d %H:%M')}'",
+        "STEP_SIZE": f"'{paso}'",
+    }
+
+    # timeout más alto que en las otras funciones: una trayectoria larga
+    # obliga a Horizons a calcular (y devolver) muchos más datos.
+    respuesta = await cliente.get(HORIZONS_URL, params=parametros, timeout=60)
+    respuesta.raise_for_status()
+    texto = respuesta.json().get('result', '')
+
+    # Cada paso de tiempo que devuelve Horizons trae TRES líneas:
+    #     X = ...  Y = ...  Z = ...      <- posición (km)
+    #     VX= ...  VY= ...  VZ= ...      <- velocidad (km/s)
+    #     LT= ...  RG= ...  RR= ...
+    # Un regex "X\s*=" a secas coincide también dentro de "VX=", así que
+    # findall devolvía posiciones y velocidades INTERCALADAS: la trayectoria
+    # quedaba con el doble de puntos y la mitad eran velocidades (~30 km/s,
+    # o sea, el origen a escala de escena) — los cuerpos saltaban a (0,0,0)
+    # en cada paso intermedio. Dos defensas:
+    #   1) leer solo el bloque de datos, entre $$SOE y $$EOE;
+    #   2) (?<![A-Za-z]) impide que "X" coincida cuando va pegada a otra
+    #      letra (VX, VY, VZ).
+    inicio_datos = texto.find('$$SOE')
+    fin_datos = texto.find('$$EOE')
+    if inicio_datos != -1 and fin_datos > inicio_datos:
+        bloque = texto[inicio_datos + len('$$SOE'):fin_datos]
+    else:
+        bloque = texto
+
+    def valores(eje):
+        return re.findall(r'(?<![A-Za-z])' + eje + r'\s*=\s*([-\d.eE+]+)', bloque)
+
+    xs, ys, zs = valores('X'), valores('Y'), valores('Z')
+
+    if not xs or not (len(xs) == len(ys) == len(zs)):
+        # Horizons no entregó posiciones: se levanta un error con LO QUE
+        # RESPONDIÓ, en vez de devolver None sin más. Cuando una fecha cae
+        # fuera de lo que cubre el cuerpo, o el id no existe, ese texto lo
+        # dice (p. ej. 'No ephemeris for target ... prior to A.D. ...') y
+        # ahorra adivinar qué falló.
+        lineas = [l.strip() for l in texto.splitlines() if l.strip() and set(l.strip()) != {"*"}]
+        resumen = " ".join(lineas)[:300] or "(respuesta vacía)"
+        raise ValueError(f"Horizons no devolvió posiciones. Respuesta: {resumen}")
+
+    return [
+        {'x': float(x), 'y': float(y), 'z': float(z)}
+        for x, y, z in zip(xs, ys, zs)
+    ]

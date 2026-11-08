@@ -24,6 +24,14 @@ Este proyecto utiliza el sistema de efemérides JPL Horizons, desarrollado y man
 - Tritón: https://images.nasa.gov/details/PIA01536
 - Caronte: https://images.nasa.gov/details/PIA19968
 - Sondas (Mapa 3D): https://science.nasa.gov/mission/parker-solar-probe/
+# Imagenes (Misiones):
+- Paso de 3I ATLAS: https://science.nasa.gov/image-detail/amf-732bc408-a69c-495e-bd4f-a8b35146fe48/
+- Paso de Oumuamua: https://assets.science.nasa.gov/dynamicimage/assets/science/psd/solar/2023/07/Artists_concept_of_cigar-shaped_space_rock.jpeg?w=1024&h=640&fit=crop&crop=faces%2Cfocalpoint
+- Voyager 1, al espacio interestelar: https://images.nasa.gov/details/PIA16486
+- Voyager 2, al Espacio Interestelar, con escalas: https://images.nasa.gov/details/PIA21726
+- New Horizons, a Plutón: https://images.nasa.gov/details/PIA19703
+- Perseverance, a Marte: https://images.nasa.gov/details/PIA23764
+- Messenger, a Mercurio: https://images.nasa.gov/details/PIA18149
 # Texturas (Color editado):
 - Sol: https://svs.gsfc.nasa.gov/30362
 - Mercurio: https://science.nasa.gov/resource/enhanced-color-mercury-map/

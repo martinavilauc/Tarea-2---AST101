@@ -1,0 +1,20 @@
+ʻOumuamua (designación oficial 1I/2017 U1) es el primer objeto interestelar
+detectado dentro de nuestro sistema solar: un cuerpo que no nació alrededor
+del Sol sino de otra estrella, y que solo está de paso. Pasó por su perihelio
+el 9 de septiembre de 2017, a unos 0,25 UA, dentro de la órbita de Mercurio;
+su máximo acercamiento a la Tierra fue el 14 de octubre, a unos 24 millones
+de kilómetros, y fue descubierto cinco días después por Robert Weryk con el
+telescopio Pan-STARRS 1, en Hawái. Su nombre es hawaiano y se suele traducir
+como "mensajero de lejos que llega primero".
+
+Su órbita es una hipérbola (excentricidad cercana a 1,2): llegó desde la
+dirección de la constelación de Lira a unos 26 km/s respecto del Sol y no
+queda ligado a él. Su brillo varía unas diez veces cada 7,3 horas, lo que
+sugiere una forma muy alargada o aplanada, de cientos de metros de largo. Se
+apartó levemente de la trayectoria que predice la gravedad sin mostrar una
+cola visible; cuál es la causa sigue en debate.
+
+Solo pudo observarse unos tres meses, hasta enero de 2018. El recorrido que
+ves —de enero de 2017 a diciembre de 2019— es la trayectoria que calcula JPL
+a partir de esas observaciones, por eso tramos como la entrada al sistema
+solar son extrapolados, no observados.

@@ -1,0 +1,23 @@
+3I/ATLAS (designación provisional C/2025 N1) es el tercer objeto interestelar
+confirmado, después de ʻOumuamua (2017) y 2I/Borisov (2019). Lo descubrió el 1
+de julio de 2025 el sondeo ATLAS desde Chile, cuando estaba a unos 4,5 UA del
+Sol y se movía a unos 58 km/s respecto de él: más del doble que ʻOumuamua. Su
+órbita es una hipérbola muy abierta (excentricidad cercana a 6) que la
+gravedad del Sol curva muy poco: viene de otra estrella y seguirá de largo
+hacia el espacio interestelar.
+
+En su camino cruzó la órbita de Marte: el 3 de octubre de 2025 pasó a unos 29
+millones de km del planeta, y varias sondas que lo orbitan lo observaron. Llegó
+al perihelio el 29 de octubre de 2025, a unos 1,36 UA del Sol (apenas dentro de
+la órbita marciana), y su máximo acercamiento a la Tierra fue el 19 de
+diciembre de 2025, a unos 270 millones de km, sin ningún riesgo para nosotros.
+En marzo de 2026 pasó a unos 54 millones de km de Júpiter.
+
+A diferencia de ʻOumuamua, mostró una coma y una cola como las de un cometa.
+Su núcleo es pequeño y no se mide directamente: las estimaciones van de cientos
+de metros a unos pocos kilómetros, así que el punto de esta animación no está
+a escala. La trayectoria es la que calcula JPL a partir de las observaciones;
+los tramos más lejanos en el tiempo son una proyección.
+
+La cámara arranca centrada en el Sol; el botón "Seguir" la ancla al cometa
+conservando el zoom.
